@@ -1,0 +1,47 @@
+{
+  "id": "audio-trim",
+  "name": "Trim — cut a section",
+  "category": "audio-generation",
+  "description": "Cuts `duration` seconds starting at `start` — the fix for a take with a false start.",
+  "execution": "host",
+  "host_tool": "ffmpeg_trim_audio",
+  "output_kind": "audio",
+  "timeout_s": 900,
+  "min_vram_gb": 0,
+  "tags": [
+    "host-tool",
+    "no-gpu",
+    "ffmpeg_trim_audio"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "audio",
+      "label": "Audio file (name in input/ or path in project)",
+      "type": "string",
+      "default": "output/studio/tts_ru_RU_00001_.wav",
+      "required": true
+    },
+    {
+      "key": "start",
+      "label": "Start",
+      "type": "float",
+      "default": 0,
+      "min": 0,
+      "max": 3600,
+      "step": 0.1,
+      "unit": "s"
+    },
+    {
+      "key": "duration",
+      "label": "Duration",
+      "type": "float",
+      "default": 10,
+      "min": 0.05,
+      "max": 3600,
+      "step": 0.1,
+      "unit": "s"
+    }
+  ],
+  "notes": "Output is 44.1 kHz 16-bit PCM WAV, so repeated trims never stack lossy generations."
+}

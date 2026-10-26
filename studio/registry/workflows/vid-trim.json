@@ -1,0 +1,47 @@
+{
+  "id": "vid-trim",
+  "name": "Video — cut a clip",
+  "category": "video-generation",
+  "description": "Cuts a section out of a clip and re-encodes it so the cut lands on a real frame instead of the nearest keyframe.",
+  "execution": "host",
+  "host_tool": "ffmpeg_video_trim",
+  "output_kind": "video",
+  "timeout_s": 900,
+  "min_vram_gb": 0,
+  "tags": [
+    "host-tool",
+    "no-gpu",
+    "ffmpeg_video_trim"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "video",
+      "label": "Video file (name in input/ or path in project)",
+      "type": "string",
+      "default": "output/studio/i2v_00002_.mp4",
+      "required": true
+    },
+    {
+      "key": "start",
+      "label": "Start",
+      "type": "float",
+      "default": 0,
+      "min": 0,
+      "max": 3600,
+      "step": 0.1,
+      "unit": "s"
+    },
+    {
+      "key": "duration",
+      "label": "Duration",
+      "type": "float",
+      "default": 4,
+      "min": 0.1,
+      "max": 600,
+      "step": 0.1,
+      "unit": "s"
+    }
+  ],
+  "notes": "Re-encoding costs time but gives frame-accurate cuts; for a rough cut of a long file, a stream copy would be faster and less precise."
+}

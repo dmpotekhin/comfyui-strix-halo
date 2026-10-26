@@ -1,0 +1,94 @@
+{
+  "id": "img-upscale-2x",
+  "name": "Image — enlarge 2× (lanczos)",
+  "category": "image-enhancement",
+  "description": "Doubles an image with Lanczos resampling — the honest, model-free enlarge. For detail invention use the RealESRGAN workflow instead.",
+  "execution": "graph",
+  "graph": {
+    "1": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "ref_raccoon.png"
+      }
+    },
+    "2": {
+      "class_type": "ImageScaleBy",
+      "inputs": {
+        "image": [
+          "1",
+          0
+        ],
+        "upscale_method": "lanczos",
+        "scale_by": 2.0
+      }
+    },
+    "3": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "filename_prefix": "studio/up2x",
+        "images": [
+          "2",
+          0
+        ]
+      }
+    }
+  },
+  "output_kind": "image",
+  "timeout_s": 180,
+  "min_vram_gb": 8,
+  "tags": [
+    "upscale",
+    "resize",
+    "lanczos",
+    "no-model"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "image",
+      "label": "Photo",
+      "type": "image",
+      "default": "ref_raccoon.png",
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      },
+      "bind": {
+        "node": "1",
+        "input": "image"
+      }
+    },
+    {
+      "key": "scale_by",
+      "label": "Scale",
+      "type": "float",
+      "default": 2.0,
+      "min": 1.0,
+      "max": 4.0,
+      "step": 0.1,
+      "bind": {
+        "node": "2",
+        "input": "scale_by"
+      }
+    },
+    {
+      "key": "method",
+      "label": "Filter",
+      "type": "choice",
+      "options": [
+        "lanczos",
+        "bicubic",
+        "bilinear",
+        "area",
+        "nearest-exact"
+      ],
+      "default": "lanczos",
+      "bind": {
+        "node": "2",
+        "input": "upscale_method"
+      }
+    }
+  ],
+  "notes": "Lanczos does not invent detail: it is the right tool for a clean 2× of an already sharp render, not for recovering a blurry one."
+}

@@ -1,0 +1,35 @@
+{
+  "id": "vid-fps-30",
+  "name": "Video — convert to 30 fps",
+  "category": "video-generation",
+  "description": "30 fps — the safe web/social rate.",
+  "execution": "host",
+  "host_tool": "ffmpeg_video_fps",
+  "output_kind": "video",
+  "timeout_s": 900,
+  "min_vram_gb": 0,
+  "tags": [
+    "host-tool",
+    "no-gpu",
+    "ffmpeg_video_fps"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "video",
+      "label": "Video file (name in input/ or path in project)",
+      "type": "string",
+      "default": "output/studio/i2v_00002_.mp4",
+      "required": true
+    },
+    {
+      "key": "fps",
+      "label": "Frames per second",
+      "type": "int",
+      "default": 30,
+      "min": 1,
+      "max": 120
+    }
+  ],
+  "notes": "Frame rate changes duplicate or drop frames — converting 24 → 60 does not invent motion detail, it only re-times what is there."
+}

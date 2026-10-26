@@ -1,0 +1,46 @@
+{
+  "id": "audio-loudnorm-23",
+  "name": "Loudness — −23 LUFS (broadcast)",
+  "category": "audio-generation",
+  "description": "EBU R128 at −23 LUFS, the broadcast standard (EBU R 128 / ATSC A/85 territory).",
+  "execution": "host",
+  "host_tool": "ffmpeg_normalize",
+  "output_kind": "audio",
+  "timeout_s": 900,
+  "min_vram_gb": 0,
+  "tags": [
+    "host-tool",
+    "no-gpu",
+    "ffmpeg_normalize"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "audio",
+      "label": "Audio file (name in input/ or path in project)",
+      "type": "string",
+      "default": "output/studio/tts_ru_RU_00001_.wav",
+      "required": true
+    },
+    {
+      "key": "lufs",
+      "label": "Target loudness",
+      "type": "float",
+      "default": -23,
+      "min": -30,
+      "max": -6,
+      "unit": "LUFS"
+    },
+    {
+      "key": "true_peak",
+      "label": "True peak ceiling",
+      "type": "float",
+      "default": -2,
+      "min": -9,
+      "max": 0,
+      "step": 0.5,
+      "unit": "dBTP"
+    }
+  ],
+  "notes": "Broadcast specs usually also cap true peak at −2 dBTP, which is why the default is different from the podcast preset."
+}

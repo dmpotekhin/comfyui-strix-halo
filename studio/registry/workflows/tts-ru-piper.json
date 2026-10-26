@@ -1,0 +1,51 @@
+{
+  "id": "tts-ru-piper",
+  "name": "Russian speech \u2014 Piper",
+  "category": "audio-generation",
+  "description": "Writes Russian speech to a WAV file entirely on the CPU: Piper is a small neural TTS that runs 20x faster than realtime here. Nothing leaves the machine and no GPU memory is used.",
+  "execution": "host",
+  "host_tool": "piper_tts",
+  "output_kind": "audio",
+  "timeout_s": 120,
+  "min_vram_gb": 0,
+  "tags": [
+    "tts",
+    "speech",
+    "russian",
+    "piper",
+    "cpu",
+    "host-tool",
+    "no-gpu"
+  ],
+  "models": [],
+  "notes": "Measured on this machine: 4.29 s of 22.05 kHz mono WAV in 0.18 s of inference (RTF 0.045), peak -0.0 dBFS, no GPU. Voice model: rhasspy/piper-voices ru_RU-irina-medium, MIT. Piper mispronounces mixed Latin/Cyrillic strings, so keep numbers and abbreviations in words.",
+  "parameters": [
+    {
+      "key": "text",
+      "label": "Text to speak",
+      "type": "text",
+      "multiline": true,
+      "required": true,
+      "default": "\u041f\u0440\u0438\u0432\u0435\u0442! \u042d\u0442\u043e \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u044b\u0439 \u0441\u0438\u043d\u0442\u0435\u0437 \u0440\u0435\u0447\u0438. \u0412\u0441\u0451 \u0441\u0447\u0438\u0442\u0430\u0435\u0442\u0441\u044f \u043d\u0430 \u0442\u0432\u043e\u0451\u043c \u043d\u043e\u0443\u0442\u0431\u0443\u043a\u0435, \u0431\u0435\u0437 \u0438\u043d\u0442\u0435\u0440\u043d\u0435\u0442\u0430."
+    },
+    {
+      "key": "voice",
+      "label": "Voice",
+      "type": "choice",
+      "options": [
+        "ru_RU-irina-medium"
+      ],
+      "default": "ru_RU-irina-medium",
+      "required": true
+    },
+    {
+      "key": "length_scale",
+      "label": "Speed (1.0 = normal, higher = slower)",
+      "type": "float",
+      "default": 1.0,
+      "min": 0.5,
+      "max": 2.0,
+      "step": 0.05
+    }
+  ]
+}

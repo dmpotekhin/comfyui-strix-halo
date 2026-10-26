@@ -1,0 +1,102 @@
+{
+  "id": "img-detail-3x",
+  "name": "Upscale 3× with recovered detail — RealESRGAN",
+  "category": "image-enhancement",
+  "description": "The same 4x-then-shrink trick tuned to a 3x result — the sweet spot for wallpapers and print-ready stills from a 1024 px render.",
+  "execution": "graph",
+  "graph": {
+    "1": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "ref_raccoon.png"
+      }
+    },
+    "2": {
+      "class_type": "UpscaleModelLoader",
+      "inputs": {
+        "model_name": "RealESRGAN_x4.pth"
+      }
+    },
+    "3": {
+      "class_type": "ImageUpscaleWithModel",
+      "inputs": {
+        "upscale_model": [
+          "2",
+          0
+        ],
+        "image": [
+          "1",
+          0
+        ]
+      }
+    },
+    "4": {
+      "class_type": "ImageScaleBy",
+      "inputs": {
+        "image": [
+          "3",
+          0
+        ],
+        "upscale_method": "area",
+        "scale_by": 0.75
+      }
+    },
+    "5": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "filename_prefix": "studio/detail3x",
+        "images": [
+          "4",
+          0
+        ]
+      }
+    }
+  },
+  "output_kind": "image",
+  "timeout_s": 360,
+  "min_vram_gb": 6,
+  "tags": [
+    "upscale",
+    "realesrgan",
+    "detail",
+    "3x",
+    "no-download"
+  ],
+  "models": [
+    {
+      "folder": "upscale_models",
+      "file": "RealESRGAN_x4.pth",
+      "purpose": "4x upscaler"
+    }
+  ],
+  "parameters": [
+    {
+      "key": "image",
+      "label": "Photo",
+      "type": "image",
+      "default": "ref_raccoon.png",
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      },
+      "bind": {
+        "node": "1",
+        "input": "image"
+      }
+    },
+    {
+      "key": "shrink",
+      "label": "Final factor",
+      "type": "float",
+      "default": 0.75,
+      "min": 0.1,
+      "max": 1.0,
+      "step": 0.05,
+      "bind": {
+        "node": "4",
+        "input": "scale_by"
+      }
+    }
+  ]
+}

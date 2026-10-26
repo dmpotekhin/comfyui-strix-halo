@@ -1,0 +1,262 @@
+{
+  "id": "outpaint-turbo",
+  "name": "Outpaint — extend the frame",
+  "category": "image-editing",
+  "description": "Adds empty space on any side of an image and generates content to fill it. Useful for turning a square crop into a wide banner or giving a subject more headroom.",
+  "output_kind": "image",
+  "min_vram_gb": 8,
+  "tags": [
+    "outpaint",
+    "extend",
+    "canvas",
+    "turbo"
+  ],
+  "models": [
+    {
+      "folder": "checkpoints",
+      "file": "sd_xl_turbo_1.0_fp16.safetensors",
+      "purpose": "base model"
+    }
+  ],
+  "notes": "The prompt should describe the whole final scene, not just the new area, because the model regenerates across the feathered seam.",
+  "graph": {
+    "1": {
+      "class_type": "CheckpointLoaderSimple",
+      "inputs": {
+        "ckpt_name": "sd_xl_turbo_1.0_fp16.safetensors"
+      }
+    },
+    "2": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "a wide landscape photograph of a lone cabin in a snowy pine forest, soft winter light",
+        "clip": [
+          "1",
+          1
+        ]
+      }
+    },
+    "3": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "blurry, low quality, watermark, text, seam, border",
+        "clip": [
+          "1",
+          1
+        ]
+      }
+    },
+    "4": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "example.png"
+      }
+    },
+    "5": {
+      "class_type": "ImagePadForOutpaint",
+      "inputs": {
+        "image": [
+          "4",
+          0
+        ],
+        "left": 256,
+        "top": 0,
+        "right": 256,
+        "bottom": 0,
+        "feathering": 40
+      }
+    },
+    "6": {
+      "class_type": "VAEEncodeForInpaint",
+      "inputs": {
+        "pixels": [
+          "5",
+          0
+        ],
+        "vae": [
+          "1",
+          2
+        ],
+        "mask": [
+          "5",
+          1
+        ],
+        "grow_mask_by": 6
+      }
+    },
+    "7": {
+      "class_type": "KSampler",
+      "inputs": {
+        "seed": 8,
+        "steps": 4,
+        "cfg": 1.0,
+        "sampler_name": "euler",
+        "scheduler": "normal",
+        "denoise": 1.0,
+        "model": [
+          "1",
+          0
+        ],
+        "positive": [
+          "2",
+          0
+        ],
+        "negative": [
+          "3",
+          0
+        ],
+        "latent_image": [
+          "6",
+          0
+        ]
+      }
+    },
+    "8": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "7",
+          0
+        ],
+        "vae": [
+          "1",
+          2
+        ]
+      }
+    },
+    "9": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "filename_prefix": "studio/outpaint",
+        "images": [
+          "8",
+          0
+        ]
+      }
+    }
+  },
+  "parameters": [
+    {
+      "key": "image",
+      "label": "Source image",
+      "type": "image",
+      "bind": {
+        "node": "4",
+        "input": "image"
+      },
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      },
+      "default": "example.png"
+    },
+    {
+      "key": "prompt",
+      "label": "Whole-scene prompt",
+      "type": "text",
+      "bind": {
+        "node": "2",
+        "input": "text"
+      },
+      "required": true,
+      "multiline": true,
+      "default": "a wide landscape photograph of a lone cabin in a snowy pine forest, soft winter light"
+    },
+    {
+      "key": "negative",
+      "label": "Negative prompt",
+      "type": "text",
+      "bind": {
+        "node": "3",
+        "input": "text"
+      },
+      "multiline": true,
+      "default": "blurry, low quality, watermark, text, seam, border"
+    },
+    {
+      "key": "left",
+      "label": "Expand left",
+      "type": "int",
+      "bind": {
+        "node": "5",
+        "input": "left"
+      },
+      "default": 256,
+      "min": 0,
+      "max": 512,
+      "step": 8,
+      "unit": "px",
+      "help": "Hard limit 512 px per side: beyond that SDXL has no source detail to continue and repeats texture."
+    },
+    {
+      "key": "right",
+      "label": "Expand right",
+      "type": "int",
+      "bind": {
+        "node": "5",
+        "input": "right"
+      },
+      "default": 256,
+      "min": 0,
+      "max": 512,
+      "step": 8,
+      "unit": "px",
+      "help": "Hard limit 512 px per side: beyond that SDXL has no source detail to continue and repeats texture."
+    },
+    {
+      "key": "top",
+      "label": "Expand top",
+      "type": "int",
+      "bind": {
+        "node": "5",
+        "input": "top"
+      },
+      "default": 0,
+      "min": 0,
+      "max": 512,
+      "step": 8,
+      "unit": "px",
+      "help": "Hard limit 512 px per side: beyond that SDXL has no source detail to continue and repeats texture."
+    },
+    {
+      "key": "bottom",
+      "label": "Expand bottom",
+      "type": "int",
+      "bind": {
+        "node": "5",
+        "input": "bottom"
+      },
+      "default": 0,
+      "min": 0,
+      "max": 512,
+      "step": 8,
+      "unit": "px",
+      "help": "Hard limit 512 px per side: beyond that SDXL has no source detail to continue and repeats texture."
+    },
+    {
+      "key": "feathering",
+      "label": "Seam feathering",
+      "type": "int",
+      "bind": {
+        "node": "5",
+        "input": "feathering"
+      },
+      "default": 40,
+      "min": 0,
+      "max": 200,
+      "unit": "px"
+    },
+    {
+      "key": "seed",
+      "label": "Seed",
+      "type": "seed",
+      "bind": {
+        "node": "7",
+        "input": "seed"
+      },
+      "default": -1,
+      "seed_source": true
+    }
+  ]
+}

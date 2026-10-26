@@ -1,0 +1,194 @@
+{
+  "id": "music-ace-step",
+  "name": "Song with vocals — ACE-Step 3.5B",
+  "category": "audio-generation",
+  "description": "Writes an original song with sung vocals from a style prompt and lyrics, entirely on this machine. ACE-Step is a 3.5B music model: UMT5 encodes the tags and lyrics, a flow-matching transformer generates the audio latent, the DCAE codec decodes it to 44.1 kHz stereo and saves FLAC. Roughly a minute of music per minute of compute.",
+  "output_kind": "audio",
+  "min_vram_gb": 12,
+  "timeout_s": 1800,
+  "tags": [
+    "music",
+    "song",
+    "vocals",
+    "ace-step",
+    "text-to-audio",
+    "audio"
+  ],
+  "models": [
+    {
+      "folder": "checkpoints",
+      "file": "ace_step_v1_3.5b.safetensors",
+      "purpose": "ACE-Step v1 3.5B — transformer + UMT5 text encoder + DCAE codec in one checkpoint"
+    }
+  ],
+  "notes": "The graph follows Comfy's own ACE-Step template: ModelSamplingSD3 shift 5.0 plus LatentApplyOperationCFG with a Reinhard tonemap keeps the flow-matching model inside its trained range, and the negative is a zeroed-out copy of the positive (the model has no real negative prompt). Length is set on EmptyAceStepLatentAudio in seconds, not frames. Tags describe genre/instruments/voice; lyrics use [verse]/[chorus]/[bridge] section markers, and an empty lyrics field gives an instrumental. WARNING - prompt sensitivity: with Cyrillic lyrics a short tag string (under about 115 characters) makes the sampler diverge to an all-NaN latent on this ROCm build, and the saved FLAC is then a constant -1.0 (mean_volume 0.0 dB) instead of music. Measured on 12 s / 20 steps: tags of 82, 91 and 110 chars gave silence at seeds 42 and 12345, tags of 123, 138, 148 and 166 chars gave real audio at both seeds, and English lyrics never showed the cliff. Defaults here use a 148-character tag string and were verified at seeds 42 and 12345. If a track comes out silent, lengthen the tags; studio/tools/ace_probe.py re-runs this workflow and reports mean/max dB, where anything at 0.0 dB is the dead-audio signature rather than a quiet mix.",
+  "graph": {
+    "1": {
+      "class_type": "CheckpointLoaderSimple",
+      "inputs": {
+        "ckpt_name": "ace_step_v1_3.5b.safetensors"
+      }
+    },
+    "2": {
+      "class_type": "TextEncodeAceStepAudio",
+      "inputs": {
+        "clip": ["1", 1],
+        "tags": "russian pop, soft female vocals, warm piano, strings, mid tempo, romantic, clean production, emotional, ballad, wide stereo, gentle reverb, intimate",
+        "lyrics": "[verse]\nГород спит, и в окнах гаснет свет,\nЯ рисую твой молчаливый след.\n[chorus]\nЕсли бы я знал, где ты теперь,\nЯ бы шёл к тебе через эту дверь.",
+        "lyrics_strength": 1.0
+      }
+    },
+    "3": {
+      "class_type": "ConditioningZeroOut",
+      "inputs": {
+        "conditioning": ["2", 0]
+      }
+    },
+    "4": {
+      "class_type": "EmptyAceStepLatentAudio",
+      "inputs": {
+        "seconds": 30.0,
+        "batch_size": 1
+      }
+    },
+    "5": {
+      "class_type": "ModelSamplingSD3",
+      "inputs": {
+        "model": ["1", 0],
+        "shift": 5.0
+      }
+    },
+    "6": {
+      "class_type": "LatentOperationTonemapReinhard",
+      "inputs": {
+        "multiplier": 1.0
+      }
+    },
+    "7": {
+      "class_type": "LatentApplyOperationCFG",
+      "inputs": {
+        "model": ["5", 0],
+        "operation": ["6", 0]
+      }
+    },
+    "8": {
+      "class_type": "KSampler",
+      "inputs": {
+        "model": ["7", 0],
+        "seed": 42,
+        "steps": 50,
+        "cfg": 5.0,
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "positive": ["2", 0],
+        "negative": ["3", 0],
+        "latent_image": ["4", 0],
+        "denoise": 1.0
+      }
+    },
+    "9": {
+      "class_type": "VAEDecodeAudio",
+      "inputs": {
+        "samples": ["8", 0],
+        "vae": ["1", 2]
+      }
+    },
+    "10": {
+      "class_type": "SaveAudio",
+      "inputs": {
+        "audio": ["9", 0],
+        "filename_prefix": "studio/ace_step"
+      }
+    }
+  },
+  "parameters": [
+    {
+      "key": "tags",
+      "label": "Style tags",
+      "type": "text",
+      "multiline": true,
+      "bind": {
+        "node": "2",
+        "input": "tags"
+      },
+      "default": "russian pop, soft female vocals, warm piano, strings, mid tempo, romantic, clean production, emotional, ballad, wide stereo, gentle reverb, intimate",
+      "required": true,
+      "description": "Genre, instruments, voice, mood, production. Comma-separated, English works best."
+    },
+    {
+      "key": "lyrics",
+      "label": "Lyrics",
+      "type": "text",
+      "multiline": true,
+      "bind": {
+        "node": "2",
+        "input": "lyrics"
+      },
+      "default": "[verse]\nГород спит, и в окнах гаснет свет,\nЯ рисую твой молчаливый след.\n[chorus]\nЕсли бы я знал, где ты теперь,\nЯ бы шёл к тебе через эту дверь.",
+      "description": "Use [verse]/[chorus]/[bridge] markers. Leave empty for an instrumental."
+    },
+    {
+      "key": "seconds",
+      "label": "Length (seconds)",
+      "type": "float",
+      "bind": {
+        "node": "4",
+        "input": "seconds"
+      },
+      "default": 30.0,
+      "min": 5.0,
+      "max": 180.0,
+      "step": 1.0
+    },
+    {
+      "key": "lyrics_strength",
+      "label": "Lyrics adherence",
+      "type": "float",
+      "bind": {
+        "node": "2",
+        "input": "lyrics_strength"
+      },
+      "default": 1.0,
+      "min": 0.0,
+      "max": 1.0,
+      "step": 0.05
+    },
+    {
+      "key": "steps",
+      "label": "Steps",
+      "type": "int",
+      "bind": {
+        "node": "8",
+        "input": "steps"
+      },
+      "default": 50,
+      "min": 10,
+      "max": 100,
+      "step": 1
+    },
+    {
+      "key": "cfg",
+      "label": "CFG",
+      "type": "float",
+      "bind": {
+        "node": "8",
+        "input": "cfg"
+      },
+      "default": 5.0,
+      "min": 1.0,
+      "max": 10.0,
+      "step": 0.5
+    },
+    {
+      "key": "seed",
+      "label": "Seed",
+      "type": "seed",
+      "bind": {
+        "node": "8",
+        "input": "seed"
+      },
+      "default": 12345,
+      "seed_source": true
+    }
+  ]
+}

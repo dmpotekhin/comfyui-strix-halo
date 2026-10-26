@@ -1,0 +1,40 @@
+{
+  "id": "vid-poster",
+  "name": "Video — poster frame",
+  "category": "video-generation",
+  "description": "Grabs one frame as a PNG poster — the image a player shows before play.",
+  "execution": "host",
+  "host_tool": "ffmpeg_video_poster",
+  "output_kind": "image",
+  "timeout_s": 900,
+  "min_vram_gb": 0,
+  "tags": [
+    "video",
+    "poster",
+    "thumbnail",
+    "host-tool",
+    "no-gpu",
+    "no-download"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "video",
+      "label": "Video file (name in input/ or path in project)",
+      "type": "string",
+      "default": "output/studio/i2v_00002_.mp4",
+      "required": true
+    },
+    {
+      "key": "at",
+      "label": "Timestamp",
+      "type": "float",
+      "default": 1,
+      "min": 0,
+      "max": 3600,
+      "step": 0.1,
+      "unit": "s"
+    }
+  ],
+  "notes": "Seeks before decoding (-ss before -i), so grabbing a frame at 10 minutes costs milliseconds instead of decoding ten minutes of video."
+}

@@ -1,0 +1,49 @@
+{
+  "id": "asr-transcribe",
+  "name": "Transcribe speech \u2014 whisper.cpp",
+  "category": "audio-generation",
+  "description": "Turns any audio file into a transcript and a subtitle file, entirely on the CPU. Useful for subtitling generated clips, checking what a TTS voice actually said, or turning a recording into notes.",
+  "execution": "host",
+  "host_tool": "whisper_transcribe",
+  "output_kind": "text",
+  "timeout_s": 1800,
+  "min_vram_gb": 0,
+  "tags": [
+    "asr",
+    "speech",
+    "transcription",
+    "subtitles",
+    "srt",
+    "whisper",
+    "cpu",
+    "host-tool"
+  ],
+  "models": [],
+  "notes": "whisper.cpp small, 466 MB ggml model, built from source into studio/tools \u2014 it is a binary, so no Python environment is touched and the ROCm/PyTorch container stays as it is. Measured: 4.5 s of Russian speech transcribed in 1.66 s. The small model makes real spelling errors on synthetic speech (\u0441\u0438\u043d\u0442\u0435\u0437\u0430 -> \u0441\u0438\u043d\u0442\u0438\u0437\u0430); use a bigger ggml model if accuracy matters more than speed. Language auto-detect is slower than naming it.",
+  "parameters": [
+    {
+      "key": "audio",
+      "label": "Audio file (absolute path inside the project)",
+      "type": "string",
+      "required": true,
+      "default": "/home/dmitry/workspace/comfyui-strix-halo/output/studio/tts_ru_RU_00001_.wav"
+    },
+    {
+      "key": "language",
+      "label": "Language",
+      "type": "choice",
+      "options": [
+        "auto",
+        "ru",
+        "en",
+        "de",
+        "fr",
+        "es",
+        "it",
+        "zh",
+        "ja"
+      ],
+      "default": "auto"
+    }
+  ]
+}

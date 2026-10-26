@@ -1,0 +1,37 @@
+{
+  "id": "vid-speed-2x",
+  "name": "Video — 2× speed",
+  "category": "video-generation",
+  "description": "Doubles playback speed and re-times the audio with it (atempo keeps the pitch).",
+  "execution": "host",
+  "host_tool": "ffmpeg_video_speed",
+  "output_kind": "video",
+  "timeout_s": 900,
+  "min_vram_gb": 0,
+  "tags": [
+    "host-tool",
+    "no-gpu",
+    "ffmpeg_video_speed"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "video",
+      "label": "Video file (name in input/ or path in project)",
+      "type": "string",
+      "default": "output/studio/i2v_00002_.mp4",
+      "required": true
+    },
+    {
+      "key": "speed",
+      "label": "Speed multiplier",
+      "type": "float",
+      "default": 2,
+      "min": 0.25,
+      "max": 4,
+      "step": 0.25,
+      "unit": "×"
+    }
+  ],
+  "notes": "Frames are written with passthrough timing, so the clip really is half as long instead of being padded back to the source duration."
+}

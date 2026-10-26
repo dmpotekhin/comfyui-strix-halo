@@ -1,0 +1,39 @@
+{
+  "id": "txt2img-upscale",
+  "name": "Text to Image + RealESRGAN 4x upscale",
+  "category": "image-generation",
+  "description": "Generate at a draft resolution, then upscale 4x with RealESRGAN in the same run. Practical for wallpapers and print-sized stills.",
+  "output_kind": "image",
+  "min_vram_gb": 10,
+  "tags": ["text2img", "upscale", "pipeline", "sdxl"],
+  "models": [
+    {"folder": "checkpoints", "file": "animagine-xl-4.0.safetensors", "purpose": "base model"},
+    {"folder": "upscale_models", "file": "RealESRGAN_x4.pth", "purpose": "4x upscaler"}
+  ],
+  "notes": "Base resolution is capped at 1024 so the 4x pass lands near 4096 px. The final ImageScaleBy keeps memory bounded; set it to 1.0 for the full 4x result.",
+  "graph": {
+    "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "animagine-xl-4.0.safetensors"}},
+    "2": {"class_type": "CLIPTextEncode", "inputs": {"text": "masterpiece, best quality, a lighthouse on a rocky cliff at sunset, dramatic clouds, wide landscape", "clip": ["1", 1]}},
+    "3": {"class_type": "CLIPTextEncode", "inputs": {"text": "lowres, worst quality, low quality, text, signature, watermark, blurry", "clip": ["1", 1]}},
+    "4": {"class_type": "EmptyLatentImage", "inputs": {"width": 768, "height": 768, "batch_size": 1}},
+    "5": {"class_type": "KSampler", "inputs": {"seed": 1234, "steps": 28, "cfg": 6.0, "sampler_name": "euler_ancestral", "scheduler": "normal", "denoise": 1.0, "model": ["1", 0], "positive": ["2", 0], "negative": ["3", 0], "latent_image": ["4", 0]}},
+    "6": {"class_type": "VAEDecode", "inputs": {"samples": ["5", 0], "vae": ["1", 2]}},
+    "7": {"class_type": "UpscaleModelLoader", "inputs": {"model_name": "RealESRGAN_x4.pth"}},
+    "8": {"class_type": "ImageUpscaleWithModel", "inputs": {"upscale_model": ["7", 0], "image": ["6", 0]}},
+    "9": {"class_type": "ImageScaleBy", "inputs": {"image": ["8", 0], "upscale_method": "lanczos", "scale_by": 0.25}},
+    "10": {"class_type": "SaveImage", "inputs": {"filename_prefix": "studio/txt2img_upscaled", "images": ["9", 0]}}
+  },
+  "parameters": [
+    {"key": "prompt", "label": "Prompt", "type": "text", "bind": {"node": "2", "input": "text"}, "required": true, "multiline": true,
+     "default": "masterpiece, best quality, a lighthouse on a rocky cliff at sunset, dramatic clouds, wide landscape"},
+    {"key": "negative", "label": "Negative prompt", "type": "text", "bind": {"node": "3", "input": "text"}, "multiline": true,
+     "default": "lowres, worst quality, low quality, text, signature, watermark, blurry"},
+    {"key": "width", "label": "Base width", "type": "int", "bind": {"node": "4", "input": "width"}, "default": 768, "min": 512, "max": 1024, "step": 64, "unit": "px"},
+    {"key": "height", "label": "Base height", "type": "int", "bind": {"node": "4", "input": "height"}, "default": 768, "min": 512, "max": 1024, "step": 64, "unit": "px"},
+    {"key": "steps", "label": "Steps", "type": "int", "bind": {"node": "5", "input": "steps"}, "default": 28, "min": 10, "max": 60},
+    {"key": "cfg", "label": "CFG", "type": "float", "bind": {"node": "5", "input": "cfg"}, "default": 6.0, "min": 1.0, "max": 12.0, "step": 0.5},
+    {"key": "final_scale", "label": "Scale after 4x", "type": "float", "bind": {"node": "9", "input": "scale_by"}, "default": 0.25, "min": 0.1, "max": 1.0, "step": 0.05,
+     "description": "1.0 keeps the full 4x result (3072 px for a 768 base). 0.25 returns to the original size."},
+    {"key": "seed", "label": "Seed", "type": "seed", "bind": {"node": "5", "input": "seed"}, "default": -1, "seed_source": true}
+  ]
+}

@@ -1,0 +1,90 @@
+{
+  "id": "img-detail-3x-x4plus",
+  "name": "Detail upscale — 3x (x4plus)",
+  "category": "image-enhancement",
+  "description": "Upscales 4x with x4plus, then shrinks to exactly 3x. Useful for print-sized output from a 1024² render.",
+  "execution": "graph",
+  "graph": {
+    "1": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "example.png"
+      }
+    },
+    "2": {
+      "class_type": "UpscaleModelLoader",
+      "inputs": {
+        "model_name": "real_esrgan_x4plus.pth"
+      }
+    },
+    "3": {
+      "class_type": "ImageUpscaleWithModel",
+      "inputs": {
+        "upscale_model": [
+          "2",
+          0
+        ],
+        "image": [
+          "1",
+          0
+        ]
+      }
+    },
+    "4": {
+      "class_type": "ImageScaleBy",
+      "inputs": {
+        "upscale_method": "area",
+        "scale_by": 0.75,
+        "image": [
+          "3",
+          0
+        ]
+      }
+    },
+    "9": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "filename_prefix": "studio/x4plus_3x",
+        "images": [
+          "4",
+          0
+        ]
+      }
+    }
+  },
+  "output_kind": "image",
+  "timeout_s": 600,
+  "min_vram_gb": 8,
+  "tags": [
+    "upscale",
+    "realesrgan",
+    "x4plus",
+    "3x",
+    "stage-s"
+  ],
+  "models": [
+    {
+      "folder": "upscale_models",
+      "file": "real_esrgan_x4plus.pth",
+      "purpose": "Real-ESRGAN x4plus (RRDBNet) — general-purpose 4x photo upscaler"
+    }
+  ],
+  "parameters": [
+    {
+      "key": "image",
+      "label": "Source image",
+      "type": "image",
+      "default": "ref_raccoon.png",
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      },
+      "bind": {
+        "node": "1",
+        "input": "image"
+      }
+    }
+  ],
+  "notes": "x4plus upscales 4x; this workflow shrinks it to 3x. Suitable for photos and clean renders, not for noisy JPEGs — RMSD on noise makes it hallucinate texture."
+}

@@ -1,0 +1,79 @@
+{
+  "id": "upscale-x4plus",
+  "name": "Upscale — Real-ESRGAN x4plus",
+  "category": "image-enhancement",
+  "description": "True 4x upscale with Real-ESRGAN x4plus: photographs, product shots and clean renders gain real texture instead of the smeared edges a Lanczos resize gives.",
+  "execution": "graph",
+  "graph": {
+    "1": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "example.png"
+      }
+    },
+    "2": {
+      "class_type": "UpscaleModelLoader",
+      "inputs": {
+        "model_name": "real_esrgan_x4plus.pth"
+      }
+    },
+    "3": {
+      "class_type": "ImageUpscaleWithModel",
+      "inputs": {
+        "upscale_model": [
+          "2",
+          0
+        ],
+        "image": [
+          "1",
+          0
+        ]
+      }
+    },
+    "9": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "filename_prefix": "studio/x4plus",
+        "images": [
+          "3",
+          0
+        ]
+      }
+    }
+  },
+  "output_kind": "image",
+  "timeout_s": 600,
+  "min_vram_gb": 8,
+  "tags": [
+    "upscale",
+    "realesrgan",
+    "x4plus",
+    "4x",
+    "stage-s"
+  ],
+  "models": [
+    {
+      "folder": "upscale_models",
+      "file": "real_esrgan_x4plus.pth",
+      "purpose": "Real-ESRGAN x4plus (RRDBNet) — general-purpose 4x photo upscaler"
+    }
+  ],
+  "parameters": [
+    {
+      "key": "image",
+      "label": "Source image",
+      "type": "image",
+      "default": "ref_raccoon.png",
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      },
+      "bind": {
+        "node": "1",
+        "input": "image"
+      }
+    }
+  ],
+  "notes": "x4plus upscales 4x; this workflow shrinks it to 4x. Suitable for photos and clean renders, not for noisy JPEGs — RMSD on noise makes it hallucinate texture."
+}

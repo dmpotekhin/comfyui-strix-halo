@@ -1,0 +1,209 @@
+{
+  "id": "img2img-restyle",
+  "name": "Image to Image — restyle / variation",
+  "category": "image-editing",
+  "description": "Feed an existing image back through the model at a chosen denoise strength. Low denoise (0.2-0.35) adjusts colour and light and keeps the photo; medium (0.45-0.6) restyles it; high (0.7+) reinvents it.",
+  "output_kind": "image",
+  "min_vram_gb": 8,
+  "tags": [
+    "img2img",
+    "style",
+    "variation",
+    "sdxl"
+  ],
+  "models": [
+    {
+      "folder": "checkpoints",
+      "file": "animagine-xl-4.0.safetensors",
+      "purpose": "base model"
+    }
+  ],
+  "notes": "Input images come from ComfyUI's input folder. The studio's upload endpoint writes there, so drag-and-drop in the UI is enough.",
+  "graph": {
+    "1": {
+      "class_type": "CheckpointLoaderSimple",
+      "inputs": {
+        "ckpt_name": "animagine-xl-4.0.safetensors"
+      }
+    },
+    "2": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "a photo of a cat, natural colours, detailed fur",
+        "clip": [
+          "1",
+          1
+        ]
+      }
+    },
+    "3": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "blurry, low quality, watermark, text, deformed",
+        "clip": [
+          "1",
+          1
+        ]
+      }
+    },
+    "4": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "example.png"
+      }
+    },
+    "5": {
+      "class_type": "VAEEncode",
+      "inputs": {
+        "pixels": [
+          "4",
+          0
+        ],
+        "vae": [
+          "1",
+          2
+        ]
+      }
+    },
+    "6": {
+      "class_type": "KSampler",
+      "inputs": {
+        "seed": 99,
+        "steps": 24,
+        "cfg": 6.0,
+        "sampler_name": "euler_ancestral",
+        "scheduler": "normal",
+        "denoise": 0.5,
+        "model": [
+          "1",
+          0
+        ],
+        "positive": [
+          "2",
+          0
+        ],
+        "negative": [
+          "3",
+          0
+        ],
+        "latent_image": [
+          "5",
+          0
+        ]
+      }
+    },
+    "7": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "6",
+          0
+        ],
+        "vae": [
+          "1",
+          2
+        ]
+      }
+    },
+    "8": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "filename_prefix": "studio/restyle",
+        "images": [
+          "7",
+          0
+        ]
+      }
+    }
+  },
+  "parameters": [
+    {
+      "key": "image",
+      "label": "Source image",
+      "type": "image",
+      "bind": {
+        "node": "4",
+        "input": "image"
+      },
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      },
+      "default": "example.png"
+    },
+    {
+      "key": "prompt",
+      "label": "Prompt",
+      "type": "text",
+      "bind": {
+        "node": "2",
+        "input": "text"
+      },
+      "required": true,
+      "multiline": true,
+      "default": "a photo of a cat, natural colours, detailed fur"
+    },
+    {
+      "key": "negative",
+      "label": "Negative prompt",
+      "type": "text",
+      "bind": {
+        "node": "3",
+        "input": "text"
+      },
+      "multiline": true,
+      "default": "blurry, low quality, watermark, text, deformed"
+    },
+    {
+      "key": "denoise",
+      "label": "Strength",
+      "type": "float",
+      "bind": {
+        "node": "6",
+        "input": "denoise"
+      },
+      "default": 0.5,
+      "min": 0.05,
+      "max": 1.0,
+      "step": 0.05,
+      "description": "How far to move away from the source image. 0.2 = gentle, 1.0 = ignore the source completely."
+    },
+    {
+      "key": "steps",
+      "label": "Steps",
+      "type": "int",
+      "bind": {
+        "node": "6",
+        "input": "steps"
+      },
+      "default": 24,
+      "min": 8,
+      "max": 60
+    },
+    {
+      "key": "cfg",
+      "label": "CFG",
+      "type": "float",
+      "bind": {
+        "node": "6",
+        "input": "cfg"
+      },
+      "default": 6.0,
+      "min": 1.0,
+      "max": 12.0,
+      "step": 0.5
+    },
+    {
+      "key": "seed",
+      "label": "Seed",
+      "type": "seed",
+      "bind": {
+        "node": "6",
+        "input": "seed"
+      },
+      "default": -1,
+      "seed_source": true
+    }
+  ]
+}

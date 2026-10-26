@@ -1,0 +1,224 @@
+{
+  "id": "txt2img-animagine",
+  "name": "Text to Image — Animagine XL 4.0 (illustration)",
+  "category": "image-generation",
+  "description": "High-quality illustration and anime-style generation with Animagine XL 4.0: 28 steps, cfg 6, euler_ancestral. Also the base model for the character-consistency workflow.",
+  "output_kind": "image",
+  "min_vram_gb": 8,
+  "tags": [
+    "text2img",
+    "anime",
+    "illustration",
+    "sdxl",
+    "quality"
+  ],
+  "models": [
+    {
+      "folder": "checkpoints",
+      "file": "animagine-xl-4.0.safetensors",
+      "purpose": "base model"
+    }
+  ],
+  "notes": "Animagine XL 4.0 is a community SDXL finetune. The default negative prompt is the one its model card recommends; the licence terms should be checked before commercial use.",
+  "graph": {
+    "1": {
+      "class_type": "CheckpointLoaderSimple",
+      "inputs": {
+        "ckpt_name": "animagine-xl-4.0.safetensors"
+      }
+    },
+    "2": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "masterpiece, best quality, a young woman in a red raincoat standing on a rainy Tokyo street at night, neon reflections, cinematic lighting",
+        "clip": [
+          "1",
+          1
+        ]
+      }
+    },
+    "3": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "lowres, bad anatomy, bad hands, text, error, missing finger, extra digits, fewer digits, cropped, worst quality, low quality, low score, bad score, average score, signature, watermark, username, blurry",
+        "clip": [
+          "1",
+          1
+        ]
+      }
+    },
+    "4": {
+      "class_type": "EmptyLatentImage",
+      "inputs": {
+        "width": 1024,
+        "height": 1024,
+        "batch_size": 1
+      }
+    },
+    "5": {
+      "class_type": "KSampler",
+      "inputs": {
+        "seed": 777,
+        "steps": 28,
+        "cfg": 6.0,
+        "sampler_name": "euler_ancestral",
+        "scheduler": "normal",
+        "denoise": 1.0,
+        "model": [
+          "1",
+          0
+        ],
+        "positive": [
+          "2",
+          0
+        ],
+        "negative": [
+          "3",
+          0
+        ],
+        "latent_image": [
+          "4",
+          0
+        ]
+      }
+    },
+    "6": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "5",
+          0
+        ],
+        "vae": [
+          "1",
+          2
+        ]
+      }
+    },
+    "7": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "filename_prefix": "studio/animagine",
+        "images": [
+          "6",
+          0
+        ]
+      }
+    }
+  },
+  "parameters": [
+    {
+      "key": "prompt",
+      "label": "Prompt",
+      "type": "text",
+      "bind": {
+        "node": "2",
+        "input": "text"
+      },
+      "required": true,
+      "multiline": true,
+      "default": "masterpiece, best quality, a young woman in a red raincoat standing on a rainy Tokyo street at night, neon reflections, cinematic lighting"
+    },
+    {
+      "key": "negative",
+      "label": "Negative prompt",
+      "type": "text",
+      "bind": {
+        "node": "3",
+        "input": "text"
+      },
+      "multiline": true,
+      "default": "lowres, bad anatomy, bad hands, text, error, missing finger, extra digits, fewer digits, cropped, worst quality, low quality, low score, bad score, average score, signature, watermark, username, blurry"
+    },
+    {
+      "key": "width",
+      "label": "Width",
+      "type": "int",
+      "bind": {
+        "node": "4",
+        "input": "width"
+      },
+      "default": 1024,
+      "min": 512,
+      "max": 1536,
+      "step": 64,
+      "unit": "px"
+    },
+    {
+      "key": "height",
+      "label": "Height",
+      "type": "int",
+      "bind": {
+        "node": "4",
+        "input": "height"
+      },
+      "default": 1024,
+      "min": 512,
+      "max": 1536,
+      "step": 64,
+      "unit": "px"
+    },
+    {
+      "key": "steps",
+      "label": "Steps",
+      "type": "int",
+      "bind": {
+        "node": "5",
+        "input": "steps"
+      },
+      "default": 28,
+      "min": 10,
+      "max": 60
+    },
+    {
+      "key": "cfg",
+      "label": "CFG",
+      "type": "float",
+      "bind": {
+        "node": "5",
+        "input": "cfg"
+      },
+      "default": 6.0,
+      "min": 1.0,
+      "max": 12.0,
+      "step": 0.5
+    },
+    {
+      "key": "sampler",
+      "label": "Sampler",
+      "type": "choice",
+      "bind": {
+        "node": "5",
+        "input": "sampler_name"
+      },
+      "default": "euler_ancestral",
+      "options_from": {
+        "class_type": "KSampler",
+        "input": "sampler_name"
+      }
+    },
+    {
+      "key": "batch_size",
+      "label": "Images",
+      "type": "int",
+      "bind": {
+        "node": "4",
+        "input": "batch_size"
+      },
+      "default": 1,
+      "min": 1,
+      "max": 4
+    },
+    {
+      "key": "seed",
+      "label": "Seed",
+      "type": "seed",
+      "bind": {
+        "node": "5",
+        "input": "seed"
+      },
+      "default": -1,
+      "seed_source": true
+    }
+  ]
+}

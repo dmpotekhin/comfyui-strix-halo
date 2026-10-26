@@ -1,0 +1,48 @@
+{
+  "id": "audio-ogg",
+  "name": "Convert — OGG Vorbis",
+  "category": "audio-generation",
+  "description": "OGG Vorbis — small files for web playback.",
+  "execution": "host",
+  "host_tool": "ffmpeg_convert_audio",
+  "output_kind": "audio",
+  "timeout_s": 900,
+  "min_vram_gb": 0,
+  "tags": [
+    "host-tool",
+    "no-gpu",
+    "ffmpeg_convert_audio"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "audio",
+      "label": "Audio file (name in input/ or path in project)",
+      "type": "string",
+      "default": "output/studio/tts_ru_RU_00001_.wav",
+      "required": true
+    },
+    {
+      "key": "format",
+      "label": "Format",
+      "type": "choice",
+      "options": [
+        "mp3",
+        "flac",
+        "ogg",
+        "wav"
+      ],
+      "default": "ogg"
+    },
+    {
+      "key": "bitrate",
+      "label": "Bitrate (lossy only)",
+      "type": "int",
+      "default": 192,
+      "min": 64,
+      "max": 320,
+      "unit": "kbps"
+    }
+  ],
+  "notes": "Re-encoding from a lossy source loses quality; keep the WAV/FLAC master and convert from that."
+}

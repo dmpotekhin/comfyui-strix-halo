@@ -1,0 +1,308 @@
+{
+  "id": "character-ipadapter",
+  "name": "Consistent character — IP-Adapter reference",
+  "category": "characters",
+  "description": "Keeps a character recognisable across generations by feeding a reference image through IP-Adapter while the prompt sets the scene. This is the same graph shape that has been used successfully on this machine before (47 recorded runs), packaged with typed inputs.",
+  "output_kind": "image",
+  "min_vram_gb": 10,
+  "tags": [
+    "character",
+    "consistency",
+    "ipadapter",
+    "storybook",
+    "illustration"
+  ],
+  "custom_nodes": [
+    "ComfyUI_IPAdapter_plus"
+  ],
+  "models": [
+    {
+      "folder": "checkpoints",
+      "file": "animagine-xl-4.0.safetensors",
+      "purpose": "base model"
+    },
+    {
+      "folder": "ipadapter",
+      "file": "ip-adapter-plus_sdxl_vit-h.safetensors",
+      "purpose": "image prompt adapter"
+    },
+    {
+      "folder": "clip_vision",
+      "file": "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors",
+      "purpose": "image encoder for IP-Adapter"
+    }
+  ],
+  "notes": "The reference image drives the character; the prompt drives the scene. Weight 0.6-0.8 keeps the character without copying the reference composition. Above 1.0 the reference layout tends to bleed into the result. 'PLUS (high strength)' resolves to ip-adapter-plus_sdxl_vit-h plus the CLIP-ViT-H encoder.",
+  "graph": {
+    "1": {
+      "class_type": "CheckpointLoaderSimple",
+      "inputs": {
+        "ckpt_name": "animagine-xl-4.0.safetensors"
+      }
+    },
+    "2": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "clip": [
+          "1",
+          1
+        ],
+        "text": "one ginger tabby kitten sitting alone on a wooden windowsill, big amber eyes, fluffy tail, looking at the viewer, children's storybook illustration, soft watercolor, warm gentle colors, clean outlines, masterpiece, best quality"
+      }
+    },
+    "3": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "clip": [
+          "1",
+          1
+        ],
+        "text": "extra animals, duplicate, deformed, bad anatomy, bad hands, missing limbs, text, error, worst quality, low quality, signature, watermark, username, blurry, scary, creepy, photorealistic"
+      }
+    },
+    "4": {
+      "class_type": "EmptyLatentImage",
+      "inputs": {
+        "width": 1024,
+        "height": 1024,
+        "batch_size": 1
+      }
+    },
+    "40": {
+      "class_type": "IPAdapterUnifiedLoader",
+      "inputs": {
+        "model": [
+          "1",
+          0
+        ],
+        "preset": "PLUS (high strength)"
+      }
+    },
+    "10": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "ref_ginger.png"
+      }
+    },
+    "20": {
+      "class_type": "IPAdapterAdvanced",
+      "inputs": {
+        "model": [
+          "40",
+          0
+        ],
+        "ipadapter": [
+          "40",
+          1
+        ],
+        "image": [
+          "10",
+          0
+        ],
+        "weight": 0.7,
+        "weight_type": "linear",
+        "combine_embeds": "concat",
+        "start_at": 0.0,
+        "end_at": 1.0,
+        "embeds_scaling": "V only"
+      }
+    },
+    "30": {
+      "class_type": "KSampler",
+      "inputs": {
+        "model": [
+          "20",
+          0
+        ],
+        "seed": 777,
+        "steps": 28,
+        "cfg": 6.0,
+        "sampler_name": "euler_ancestral",
+        "scheduler": "normal",
+        "positive": [
+          "2",
+          0
+        ],
+        "negative": [
+          "3",
+          0
+        ],
+        "latent_image": [
+          "4",
+          0
+        ],
+        "denoise": 1.0
+      }
+    },
+    "31": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "30",
+          0
+        ],
+        "vae": [
+          "1",
+          2
+        ]
+      }
+    },
+    "32": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "images": [
+          "31",
+          0
+        ],
+        "filename_prefix": "studio/character"
+      }
+    }
+  },
+  "parameters": [
+    {
+      "key": "reference_image",
+      "label": "Character reference",
+      "type": "image",
+      "bind": {
+        "node": "10",
+        "input": "image"
+      },
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      },
+      "default": "ref_ginger.png",
+      "description": "The face/character to keep. A clean, front-facing image works best."
+    },
+    {
+      "key": "prompt",
+      "label": "Scene prompt",
+      "type": "text",
+      "bind": {
+        "node": "2",
+        "input": "text"
+      },
+      "required": true,
+      "multiline": true,
+      "default": "one ginger tabby kitten sitting alone on a wooden windowsill, big amber eyes, fluffy tail, looking at the viewer, children's storybook illustration, soft watercolor, warm gentle colors, clean outlines, masterpiece, best quality"
+    },
+    {
+      "key": "negative",
+      "label": "Negative prompt",
+      "type": "text",
+      "bind": {
+        "node": "3",
+        "input": "text"
+      },
+      "multiline": true,
+      "default": "extra animals, duplicate, deformed, bad anatomy, bad hands, missing limbs, text, error, worst quality, low quality, signature, watermark, username, blurry, scary, creepy, photorealistic"
+    },
+    {
+      "key": "ipa_weight",
+      "label": "Reference strength",
+      "type": "float",
+      "bind": {
+        "node": "20",
+        "input": "weight"
+      },
+      "default": 0.7,
+      "min": 0.0,
+      "max": 2.0,
+      "step": 0.05,
+      "description": "0.6-0.8 keeps the character. 1.0+ starts copying the reference composition."
+    },
+    {
+      "key": "ipa_weight_type",
+      "label": "Weight style",
+      "type": "choice",
+      "bind": {
+        "node": "20",
+        "input": "weight_type"
+      },
+      "default": "linear",
+      "options_from": {
+        "class_type": "IPAdapterAdvanced",
+        "input": "weight_type"
+      }
+    },
+    {
+      "key": "preset",
+      "label": "Adapter preset",
+      "type": "choice",
+      "bind": {
+        "node": "40",
+        "input": "preset"
+      },
+      "default": "PLUS (high strength)",
+      "options_from": {
+        "class_type": "IPAdapterUnifiedLoader",
+        "input": "preset"
+      }
+    },
+    {
+      "key": "width",
+      "label": "Width",
+      "type": "int",
+      "bind": {
+        "node": "4",
+        "input": "width"
+      },
+      "default": 1024,
+      "min": 512,
+      "max": 1536,
+      "step": 64,
+      "unit": "px"
+    },
+    {
+      "key": "height",
+      "label": "Height",
+      "type": "int",
+      "bind": {
+        "node": "4",
+        "input": "height"
+      },
+      "default": 1024,
+      "min": 512,
+      "max": 1536,
+      "step": 64,
+      "unit": "px"
+    },
+    {
+      "key": "steps",
+      "label": "Steps",
+      "type": "int",
+      "bind": {
+        "node": "30",
+        "input": "steps"
+      },
+      "default": 28,
+      "min": 10,
+      "max": 60
+    },
+    {
+      "key": "cfg",
+      "label": "CFG",
+      "type": "float",
+      "bind": {
+        "node": "30",
+        "input": "cfg"
+      },
+      "default": 6.0,
+      "min": 1.0,
+      "max": 12.0,
+      "step": 0.5
+    },
+    {
+      "key": "seed",
+      "label": "Seed",
+      "type": "seed",
+      "bind": {
+        "node": "30",
+        "input": "seed"
+      },
+      "default": -1,
+      "seed_source": true
+    }
+  ]
+}

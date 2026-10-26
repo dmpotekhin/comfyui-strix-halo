@@ -1,0 +1,76 @@
+{
+  "id": "upscale-realesrgan",
+  "name": "Upscale image 4x — RealESRGAN",
+  "category": "image-enhancement",
+  "description": "Neural 4x upscale with RealESRGAN_x4. Recovers detail far better than resampling for photos and illustrations; not a substitute for a true detail-refining pass on heavily degraded images.",
+  "output_kind": "image",
+  "min_vram_gb": 6,
+  "tags": [
+    "upscale",
+    "restore",
+    "realesrgan",
+    "enhance"
+  ],
+  "models": [
+    {
+      "folder": "upscale_models",
+      "file": "RealESRGAN_x4.pth",
+      "purpose": "4x upscaler"
+    }
+  ],
+  "notes": "The output is 4x the input in each dimension. A 1024 px input becomes 4096 px, which is a ~64 MB PNG — expect the file size to grow accordingly. Use the Smart resize workflow if you need a specific final size.",
+  "graph": {
+    "1": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "example.png"
+      }
+    },
+    "2": {
+      "class_type": "UpscaleModelLoader",
+      "inputs": {
+        "model_name": "RealESRGAN_x4.pth"
+      }
+    },
+    "3": {
+      "class_type": "ImageUpscaleWithModel",
+      "inputs": {
+        "upscale_model": [
+          "2",
+          0
+        ],
+        "image": [
+          "1",
+          0
+        ]
+      }
+    },
+    "4": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "filename_prefix": "studio/upscale4x",
+        "images": [
+          "3",
+          0
+        ]
+      }
+    }
+  },
+  "parameters": [
+    {
+      "key": "image",
+      "label": "Source image",
+      "type": "image",
+      "bind": {
+        "node": "1",
+        "input": "image"
+      },
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      },
+      "default": "example.png"
+    }
+  ]
+}

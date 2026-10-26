@@ -1,0 +1,84 @@
+{
+  "id": "img-watermark-center",
+  "name": "Watermark — centre proof mark",
+  "category": "image-editing",
+  "description": "A large, low-opacity mark across the middle: the version you send for approval, not for publishing.",
+  "execution": "host",
+  "host_tool": "image_watermark",
+  "output_kind": "image",
+  "timeout_s": 900,
+  "min_vram_gb": 0,
+  "tags": [
+    "host-tool",
+    "no-gpu",
+    "image_watermark"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "image",
+      "label": "Photo",
+      "type": "image",
+      "default": "ref_raccoon.png",
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      }
+    },
+    {
+      "key": "text",
+      "label": "Watermark text",
+      "type": "string",
+      "default": "DRAFT",
+      "required": true
+    },
+    {
+      "key": "position",
+      "label": "Position",
+      "type": "choice",
+      "options": [
+        "center",
+        "bottom-right"
+      ],
+      "default": "center"
+    },
+    {
+      "key": "opacity",
+      "label": "Opacity",
+      "type": "float",
+      "default": 0.35,
+      "min": 0.05,
+      "max": 1,
+      "step": 0.05
+    },
+    {
+      "key": "font_size",
+      "label": "Font size (0 = auto)",
+      "type": "int",
+      "default": 0,
+      "min": 0,
+      "max": 512
+    },
+    {
+      "key": "margin",
+      "label": "Margin (px)",
+      "type": "int",
+      "default": 0,
+      "min": 0,
+      "max": 512
+    },
+    {
+      "key": "format",
+      "label": "Output format",
+      "type": "choice",
+      "options": [
+        "png",
+        "jpg",
+        "webp"
+      ],
+      "default": "png"
+    }
+  ],
+  "notes": null
+}

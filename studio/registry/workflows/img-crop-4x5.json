@@ -1,0 +1,61 @@
+{
+  "id": "img-crop-4x5",
+  "name": "Crop — portrait 4:5",
+  "category": "image-editing",
+  "description": "Crops to 4:5 by cutting the overflow, keeping the chosen edge. What you do before putting an image into a video or a social post.",
+  "execution": "host",
+  "host_tool": "image_crop",
+  "output_kind": "image",
+  "timeout_s": 900,
+  "min_vram_gb": 0,
+  "tags": [
+    "host-tool",
+    "no-gpu",
+    "image_crop"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "image",
+      "label": "Photo",
+      "type": "image",
+      "default": "ref_raccoon.png",
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      }
+    },
+    {
+      "key": "aspect",
+      "label": "Aspect ratio",
+      "type": "string",
+      "default": "4:5"
+    },
+    {
+      "key": "anchor",
+      "label": "Keep",
+      "type": "choice",
+      "options": [
+        "center",
+        "top",
+        "bottom",
+        "left",
+        "right"
+      ],
+      "default": "center"
+    },
+    {
+      "key": "format",
+      "label": "Output format",
+      "type": "choice",
+      "options": [
+        "png",
+        "jpg",
+        "webp"
+      ],
+      "default": "png"
+    }
+  ],
+  "notes": "Cropping never resamples — the kept pixels are bit-identical to the source."
+}

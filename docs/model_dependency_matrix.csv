@@ -1,0 +1,62 @@
+workflow_id,workflow_name,category,model_file,declared,referenced_in_graph,status
+asr-all-formats,Transcript — txt + SRT + VTT + JSON at once,audio,ggml-small.bin,yes,no,ready_to_test
+asr-json,Transcript — JSON with word timings,audio,ggml-small.bin,yes,no,ready_to_test
+asr-srt,Subtitles — SRT from audio,audio,ggml-small.bin,yes,no,ready_to_test
+asr-vtt,Subtitles — WebVTT from audio,audio,ggml-small.bin,yes,no,ready_to_test
+music-ace-step,Song with vocals — ACE-Step 3.5B,audio,ace_step_v1_3.5b.safetensors,yes,yes,ready_to_test
+tts-en-narrator,"Speech — English, documentary narrator",audio,en_US-lessac-medium.onnx,yes,no,ready_to_test
+tts-ru-fast,"Speech — Russian, brisk delivery",audio,ru_RU-irina-medium.onnx,yes,no,ready_to_test
+tts-ru-pitch-down,"Speech — Russian, deeper voice",audio,ru_RU-irina-medium.onnx,yes,no,ready_to_test
+tts-ru-pitch-up,"Speech — Russian, higher voice",audio,ru_RU-irina-medium.onnx,yes,no,ready_to_test
+tts-ru-slow,"Speech — Russian, slow narration",audio,ru_RU-irina-medium.onnx,yes,no,ready_to_test
+character-ipadapter,Consistent character — IP-Adapter reference,characters,CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors,yes,no,ready_to_test
+character-ipadapter,Consistent character — IP-Adapter reference,characters,animagine-xl-4.0.safetensors,yes,yes,ready_to_test
+character-ipadapter,Consistent character — IP-Adapter reference,characters,ip-adapter-plus_sdxl_vit-h.safetensors,yes,no,ready_to_test
+img-detail-2x,Upscale 2× with recovered detail — RealESRGAN,enhancement,RealESRGAN_x4.pth,yes,yes,ready_to_test
+img-detail-3x,Upscale 3× with recovered detail — RealESRGAN,enhancement,RealESRGAN_x4.pth,yes,yes,ready_to_test
+upscale-realesrgan,Upscale image 4x — RealESRGAN,enhancement,RealESRGAN_x4.pth,yes,yes,ready_to_test
+cutout-u2net,Cutout — subject on transparent background (U²-Net),image-editing,u2net.onnx,yes,no,ready_to_test
+img2img-anime,Restyle — photo to anime (Animagine),image-editing,animagine-xl-4.0.safetensors,yes,yes,ready_to_test
+img2img-restyle,Image to Image — restyle / variation,image-editing,animagine-xl-4.0.safetensors,yes,yes,ready_to_test
+img2img-soft,Restyle — soft (denoise 0.35),image-editing,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
+img2img-strong,Restyle — strong (denoise 0.75),image-editing,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
+img2img-turbo,Fast Restyle — SDXL Turbo img2img,image-editing,animagine-xl-4.0.safetensors,yes,no,ready_to_test
+img2img-turbo,Fast Restyle — SDXL Turbo img2img,image-editing,sd_xl_turbo_1.0_fp16.safetensors,no,yes,ready_to_test
+inpaint-remove,Inpaint — remove an object,image-editing,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
+inpaint-turbo,Inpaint — replace part of an image (mask),image-editing,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,available
+outpaint-turbo,Outpaint — extend the frame,image-editing,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
+cn-canny-sdxl,Edge-guided generation — SDXL Canny ControlNet,image-generation,controlnet-canny-sdxl-1.0.safetensors,yes,yes,ready_to_test
+cn-canny-sdxl,Edge-guided generation — SDXL Canny ControlNet,image-generation,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
+cn-depth-sdxl,Depth-guided generation — host depth map → SDXL Depth ControlNet,image-generation,controlnet-depth-sdxl-1.0.safetensors,yes,yes,ready_to_test
+cn-depth-sdxl,Depth-guided generation — host depth map → SDXL Depth ControlNet,image-generation,depth-anything-v2-small.onnx,yes,no,ready_to_test
+cn-depth-sdxl,Depth-guided generation — host depth map → SDXL Depth ControlNet,image-generation,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
+cn-dual-canny-depth,ControlNet — canny + depth together,image-generation,controlnet-canny-sdxl-1.0.safetensors,yes,yes,ready_to_test
+cn-dual-canny-depth,ControlNet — canny + depth together,image-generation,controlnet-depth-sdxl-1.0.safetensors,yes,yes,ready_to_test
+cn-dual-canny-depth,ControlNet — canny + depth together,image-generation,depth-anything-v2-small.onnx,yes,no,ready_to_test
+cn-dual-canny-depth,ControlNet — canny + depth together,image-generation,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
+cn-triple-lock,"ControlNet — canny, gentle (0.35)",image-generation,controlnet-canny-sdxl-1.0.safetensors,yes,yes,ready_to_test
+cn-triple-lock,"ControlNet — canny, gentle (0.35)",image-generation,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
+format-cinema,Format — cinema 1344×768,image-generation,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
+format-landscape,Format — landscape 1216×832,image-generation,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
+format-portrait,Format — portrait 832×1216,image-generation,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
+format-square,Format — square 1024×1024,image-generation,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
+format-story,Format — story 768×1344,image-generation,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
+img-batch-4,Batch — four takes of one prompt,image-generation,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
+img-hires-fix,"Image — hires fix (sample, upscale, resample)",image-generation,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
+style-3d,Style — 3D render,image-generation,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
+style-anime,Style — anime (Animagine XL 4.0),image-generation,animagine-xl-4.0.safetensors,yes,yes,ready_to_test
+style-cinematic,Style — cinematic still,image-generation,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
+style-photo,Style — photographic,image-generation,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
+style-product,Style — product shot,image-generation,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
+style-sketch,Style — pencil sketch,image-generation,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
+txt2img-animagine,Text to Image — Animagine XL 4.0 (illustration),image-generation,animagine-xl-4.0.safetensors,yes,yes,ready_to_test
+txt2img-turbo,Text to Image — SDXL Turbo (fast draft),image-generation,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
+txt2img-upscale,Text to Image + RealESRGAN 4x upscale,image-generation,RealESRGAN_x4.pth,yes,yes,ready_to_test
+txt2img-upscale,Text to Image + RealESRGAN 4x upscale,image-generation,animagine-xl-4.0.safetensors,yes,yes,ready_to_test
+video-i2v-wan22,Image to Video — Wan 2.2 TI2V-5B,video,CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors,yes,yes,ready_to_test
+video-i2v-wan22,Image to Video — Wan 2.2 TI2V-5B,video,umt5_xxl_fp8_e4m3fn_scaled.safetensors,yes,yes,ready_to_test
+video-i2v-wan22,Image to Video — Wan 2.2 TI2V-5B,video,wan2.2_ti2v_5B_fp16.safetensors,yes,yes,ready_to_test
+video-i2v-wan22,Image to Video — Wan 2.2 TI2V-5B,video,wan2.2_vae.safetensors,yes,yes,ready_to_test
+video-t2v-wan22,Text to Video — Wan 2.2 TI2V-5B,video,umt5_xxl_fp8_e4m3fn_scaled.safetensors,yes,yes,ready_to_test
+video-t2v-wan22,Text to Video — Wan 2.2 TI2V-5B,video,wan2.2_ti2v_5B_fp16.safetensors,yes,yes,ready_to_test
+video-t2v-wan22,Text to Video — Wan 2.2 TI2V-5B,video,wan2.2_vae.safetensors,yes,yes,ready_to_test

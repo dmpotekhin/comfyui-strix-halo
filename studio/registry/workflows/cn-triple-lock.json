@@ -1,0 +1,276 @@
+{
+  "id": "cn-triple-lock",
+  "name": "ControlNet — canny, gentle (0.35)",
+  "category": "image-generation",
+  "description": "Same photo, same seed, canny ControlNet at 0.35: the conservative setting that keeps the source silhouette without turning the render into a line drawing.",
+  "execution": "graph",
+  "graph": {
+    "1": {
+      "class_type": "CheckpointLoaderSimple",
+      "inputs": {
+        "ckpt_name": "sd_xl_turbo_1.0_fp16.safetensors"
+      }
+    },
+    "2": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "a red fox in a mossy forest, cinematic light, detailed fur, photographic",
+        "clip": [
+          "1",
+          1
+        ]
+      }
+    },
+    "3": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "blurry, low quality, watermark, text, deformed, extra fingers",
+        "clip": [
+          "1",
+          1
+        ]
+      }
+    },
+    "4": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "ref_raccoon.png"
+      }
+    },
+    "5": {
+      "class_type": "Canny",
+      "inputs": {
+        "image": [
+          "4",
+          0
+        ],
+        "low_threshold": 0.4,
+        "high_threshold": 0.8
+      }
+    },
+    "6": {
+      "class_type": "ControlNetLoader",
+      "inputs": {
+        "control_net_name": "controlnet-canny-sdxl-1.0.safetensors"
+      }
+    },
+    "7": {
+      "class_type": "ControlNetApplyAdvanced",
+      "inputs": {
+        "positive": [
+          "2",
+          0
+        ],
+        "negative": [
+          "3",
+          0
+        ],
+        "control_net": [
+          "6",
+          0
+        ],
+        "image": [
+          "5",
+          0
+        ],
+        "strength": 0.35,
+        "start_percent": 0.0,
+        "end_percent": 0.65
+      }
+    },
+    "8": {
+      "class_type": "EmptyLatentImage",
+      "inputs": {
+        "width": 1024,
+        "height": 1024,
+        "batch_size": 1
+      }
+    },
+    "9": {
+      "class_type": "KSampler",
+      "inputs": {
+        "seed": 11,
+        "steps": 8,
+        "cfg": 1.0,
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "denoise": 1.0,
+        "model": [
+          "1",
+          0
+        ],
+        "positive": [
+          "7",
+          0
+        ],
+        "negative": [
+          "7",
+          1
+        ],
+        "latent_image": [
+          "8",
+          0
+        ]
+      }
+    },
+    "10": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "9",
+          0
+        ],
+        "vae": [
+          "1",
+          2
+        ]
+      }
+    },
+    "11": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "filename_prefix": "studio/cn_soft",
+        "images": [
+          "10",
+          0
+        ]
+      }
+    }
+  },
+  "output_kind": "image",
+  "timeout_s": 420,
+  "min_vram_gb": 12,
+  "tags": [
+    "controlnet",
+    "canny",
+    "soft-strength",
+    "no-download"
+  ],
+  "models": [
+    {
+      "folder": "checkpoints",
+      "file": "sd_xl_turbo_1.0_fp16.safetensors",
+      "purpose": "SDXL-Turbo base model (4-step sampling)"
+    },
+    {
+      "folder": "controlnet",
+      "file": "controlnet-canny-sdxl-1.0.safetensors",
+      "purpose": "Canny ControlNet (SDXL)"
+    }
+  ],
+  "parameters": [
+    {
+      "key": "image",
+      "label": "Photo",
+      "type": "image",
+      "default": "ref_raccoon.png",
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      },
+      "bind": {
+        "node": "4",
+        "input": "image"
+      }
+    },
+    {
+      "key": "prompt",
+      "label": "Prompt",
+      "type": "text",
+      "multiline": true,
+      "default": "a red fox in a mossy forest, cinematic light, detailed fur, photographic",
+      "required": true,
+      "bind": {
+        "node": "2",
+        "input": "text"
+      }
+    },
+    {
+      "key": "negative",
+      "label": "Negative prompt",
+      "type": "text",
+      "multiline": true,
+      "default": "blurry, low quality, watermark, text, deformed, extra fingers",
+      "bind": {
+        "node": "3",
+        "input": "text"
+      }
+    },
+    {
+      "key": "strength",
+      "label": "Canny strength",
+      "type": "float",
+      "default": 0.35,
+      "min": 0.0,
+      "max": 1.5,
+      "step": 0.05,
+      "bind": {
+        "node": "7",
+        "input": "strength"
+      }
+    },
+    {
+      "key": "low_threshold",
+      "label": "Canny low threshold",
+      "type": "float",
+      "default": 0.4,
+      "min": 0.01,
+      "max": 0.99,
+      "step": 0.01,
+      "bind": {
+        "node": "5",
+        "input": "low_threshold"
+      }
+    },
+    {
+      "key": "high_threshold",
+      "label": "Canny high threshold",
+      "type": "float",
+      "default": 0.8,
+      "min": 0.02,
+      "max": 0.99,
+      "step": 0.01,
+      "bind": {
+        "node": "5",
+        "input": "high_threshold"
+      }
+    },
+    {
+      "key": "steps",
+      "label": "Steps",
+      "type": "int",
+      "default": 8,
+      "min": 1,
+      "max": 30,
+      "bind": {
+        "node": "9",
+        "input": "steps"
+      }
+    },
+    {
+      "key": "cfg",
+      "label": "CFG scale",
+      "type": "float",
+      "default": 1.0,
+      "min": 0.0,
+      "max": 12.0,
+      "step": 0.1,
+      "bind": {
+        "node": "9",
+        "input": "cfg"
+      }
+    },
+    {
+      "key": "seed",
+      "label": "Seed",
+      "type": "seed",
+      "default": 11,
+      "bind": {
+        "node": "9",
+        "input": "seed"
+      }
+    }
+  ],
+  "notes": "Same graph as cn-canny-sdxl with the strength that keeps the photograph readable — the low end of the sweep this studio is calibrated for."
+}

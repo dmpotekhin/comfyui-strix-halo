@@ -1,0 +1,58 @@
+{
+  "id": "img-convert-jpg",
+  "name": "Convert — to JPEG",
+  "category": "image-editing",
+  "description": "JPEG at quality 92 with 4:4:4 chroma — the safest format for sharing, and the one that keeps text edges clean.",
+  "execution": "host",
+  "host_tool": "image_convert",
+  "output_kind": "image",
+  "timeout_s": 900,
+  "min_vram_gb": 0,
+  "tags": [
+    "host-tool",
+    "no-gpu",
+    "image_convert"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "image",
+      "label": "Photo",
+      "type": "image",
+      "default": "ref_raccoon.png",
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      }
+    },
+    {
+      "key": "format",
+      "label": "Output format",
+      "type": "choice",
+      "options": [
+        "jpg",
+        "png",
+        "webp"
+      ],
+      "default": "jpg"
+    },
+    {
+      "key": "quality",
+      "label": "Quality",
+      "type": "int",
+      "default": 92,
+      "min": 1,
+      "max": 100
+    },
+    {
+      "key": "max_side",
+      "label": "Max longest side (0 = keep)",
+      "type": "int",
+      "default": 0,
+      "min": 0,
+      "max": 8192
+    }
+  ],
+  "notes": "Transparency is flattened onto white, because JPEG has no alpha channel."
+}

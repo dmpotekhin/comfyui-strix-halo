@@ -1,0 +1,36 @@
+{
+  "id": "audio-trim-silence",
+  "name": "Cleanup — trim leading/trailing silence",
+  "category": "audio-generation",
+  "description": "Removes the dead air at both ends of a take — the standard cleanup after a TTS render.",
+  "execution": "host",
+  "host_tool": "ffmpeg_trim_silence",
+  "output_kind": "audio",
+  "timeout_s": 900,
+  "min_vram_gb": 0,
+  "tags": [
+    "host-tool",
+    "no-gpu",
+    "ffmpeg_trim_silence"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "audio",
+      "label": "Audio file (name in input/ or path in project)",
+      "type": "string",
+      "default": "output/studio/tts_ru_RU_00001_.wav",
+      "required": true
+    },
+    {
+      "key": "threshold_db",
+      "label": "Silence threshold",
+      "type": "float",
+      "default": -40,
+      "min": -80,
+      "max": -10,
+      "unit": "dB"
+    }
+  ],
+  "notes": "The file is reversed, trimmed again and reversed back, so the tail is treated exactly like the head. −40 dB is a good default for a clean synthetic voice."
+}

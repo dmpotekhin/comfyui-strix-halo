@@ -1,0 +1,37 @@
+{
+  "id": "vid-add-audio",
+  "name": "Narrate a clip \u2014 mux audio onto video",
+  "category": "video-generation",
+  "description": "Puts a soundtrack on a silent clip: the video stream is copied untouched and the audio becomes a 192 kbit/s AAC track in a faststart MP4. This is the step that turns a generated Wan video plus a Piper narration into a finished clip.",
+  "execution": "host",
+  "host_tool": "ffmpeg_mux_audio",
+  "output_kind": "video",
+  "timeout_s": 600,
+  "min_vram_gb": 0,
+  "tags": [
+    "video",
+    "audio",
+    "mux",
+    "narrate",
+    "ffmpeg",
+    "host-tool"
+  ],
+  "models": [],
+  "notes": "-shortest trims to the shorter input, so a long narration cuts the picture rather than producing a frozen tail. Video is stream-copied: no quality loss, no re-encode. Both paths must be inside the project.",
+  "parameters": [
+    {
+      "key": "video",
+      "label": "Video file",
+      "type": "string",
+      "required": true,
+      "default": "/home/dmitry/workspace/comfyui-strix-halo/output/studio/i2v_00002_.mp4"
+    },
+    {
+      "key": "audio",
+      "label": "Audio file",
+      "type": "string",
+      "required": true,
+      "default": "/home/dmitry/workspace/comfyui-strix-halo/output/studio/tts_ru_RU_00001_.wav"
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "id": "audio-loudnorm-16",
+  "name": "Loudness — −16 LUFS (podcast/YouTube)",
+  "category": "audio-generation",
+  "description": "EBU R128 normalisation to −16 LUFS with a −1.5 dBTP ceiling: the delivery target for YouTube, Spotify and most podcasts.",
+  "execution": "host",
+  "host_tool": "ffmpeg_normalize",
+  "output_kind": "audio",
+  "timeout_s": 900,
+  "min_vram_gb": 0,
+  "tags": [
+    "host-tool",
+    "no-gpu",
+    "ffmpeg_normalize"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "audio",
+      "label": "Audio file (name in input/ or path in project)",
+      "type": "string",
+      "default": "output/studio/tts_ru_RU_00001_.wav",
+      "required": true
+    },
+    {
+      "key": "lufs",
+      "label": "Target loudness",
+      "type": "float",
+      "default": -16,
+      "min": -30,
+      "max": -6,
+      "unit": "LUFS"
+    },
+    {
+      "key": "true_peak",
+      "label": "True peak ceiling",
+      "type": "float",
+      "default": -1.5,
+      "min": -9,
+      "max": 0,
+      "step": 0.5,
+      "unit": "dBTP"
+    }
+  ],
+  "notes": "Two files that both sit at −16 LUFS sound equally loud, which is the point — raw peak level does not."
+}

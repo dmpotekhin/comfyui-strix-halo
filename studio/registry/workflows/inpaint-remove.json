@@ -1,0 +1,215 @@
+{
+  "id": "inpaint-remove",
+  "name": "Inpaint — remove an object",
+  "category": "image-editing",
+  "description": "Paints over whatever the alpha mask covers with a continuation of the surroundings. The photo must carry an alpha channel; the mask is the transparent area, grown by `grow_mask_by` pixels.",
+  "execution": "graph",
+  "graph": {
+    "1": {
+      "class_type": "CheckpointLoaderSimple",
+      "inputs": {
+        "ckpt_name": "sd_xl_turbo_1.0_fp16.safetensors"
+      }
+    },
+    "2": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "empty background, seamless continuation of the surface, clean photorealistic texture, natural light",
+        "clip": [
+          "1",
+          1
+        ]
+      }
+    },
+    "3": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "blurry, low quality, watermark, text, deformed, extra fingers",
+        "clip": [
+          "1",
+          1
+        ]
+      }
+    },
+    "4": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "example.png"
+      }
+    },
+    "5": {
+      "class_type": "VAEEncodeForInpaint",
+      "inputs": {
+        "pixels": [
+          "4",
+          0
+        ],
+        "vae": [
+          "1",
+          2
+        ],
+        "mask": [
+          "4",
+          1
+        ],
+        "grow_mask_by": 12
+      }
+    },
+    "6": {
+      "class_type": "KSampler",
+      "inputs": {
+        "seed": 5,
+        "steps": 6,
+        "cfg": 1.0,
+        "sampler_name": "euler",
+        "scheduler": "normal",
+        "denoise": 1.0,
+        "model": [
+          "1",
+          0
+        ],
+        "positive": [
+          "2",
+          0
+        ],
+        "negative": [
+          "3",
+          0
+        ],
+        "latent_image": [
+          "5",
+          0
+        ]
+      }
+    },
+    "7": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "6",
+          0
+        ],
+        "vae": [
+          "1",
+          2
+        ]
+      }
+    },
+    "8": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "filename_prefix": "studio/inpaint_remove",
+        "images": [
+          "7",
+          0
+        ]
+      }
+    }
+  },
+  "output_kind": "image",
+  "timeout_s": 300,
+  "min_vram_gb": 10,
+  "requires_alpha": true,
+  "tags": [
+    "inpaint",
+    "object-removal",
+    "mask",
+    "sdxl-turbo",
+    "no-download"
+  ],
+  "models": [
+    {
+      "folder": "checkpoints",
+      "file": "sd_xl_turbo_1.0_fp16.safetensors",
+      "purpose": "SDXL-Turbo base model (4-step sampling)"
+    }
+  ],
+  "parameters": [
+    {
+      "key": "image",
+      "label": "Photo with alpha mask",
+      "type": "image",
+      "default": "ref_raccoon.png",
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      },
+      "bind": {
+        "node": "4",
+        "input": "image"
+      }
+    },
+    {
+      "key": "prompt",
+      "label": "Prompt",
+      "type": "text",
+      "multiline": true,
+      "default": "empty background, seamless continuation of the surface, clean photorealistic texture, natural light",
+      "required": true,
+      "bind": {
+        "node": "2",
+        "input": "text"
+      }
+    },
+    {
+      "key": "negative",
+      "label": "Negative prompt",
+      "type": "text",
+      "multiline": true,
+      "default": "blurry, low quality, watermark, text, deformed, extra fingers",
+      "bind": {
+        "node": "3",
+        "input": "text"
+      }
+    },
+    {
+      "key": "grow_mask_by",
+      "label": "Grow mask by (px)",
+      "type": "int",
+      "default": 12,
+      "min": 0,
+      "max": 64,
+      "bind": {
+        "node": "5",
+        "input": "grow_mask_by"
+      }
+    },
+    {
+      "key": "steps",
+      "label": "Steps",
+      "type": "int",
+      "default": 6,
+      "min": 1,
+      "max": 20,
+      "bind": {
+        "node": "6",
+        "input": "steps"
+      }
+    },
+    {
+      "key": "cfg",
+      "label": "CFG scale",
+      "type": "float",
+      "default": 1.0,
+      "min": 0.0,
+      "max": 12.0,
+      "step": 0.1,
+      "bind": {
+        "node": "6",
+        "input": "cfg"
+      }
+    },
+    {
+      "key": "seed",
+      "label": "Seed",
+      "type": "seed",
+      "default": 5,
+      "bind": {
+        "node": "6",
+        "input": "seed"
+      }
+    }
+  ],
+  "notes": "The cutout workflow writes exactly this kind of input: cut a subject out, then inpaint the hole to erase it. A larger grow_mask_by hides soft mask edges."
+}

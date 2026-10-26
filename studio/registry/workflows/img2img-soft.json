@@ -1,0 +1,209 @@
+{
+  "id": "img2img-soft",
+  "name": "Restyle — soft (denoise 0.35)",
+  "category": "image-editing",
+  "description": "Light touch: cleans, relights and unifies a photo while keeping it recognisably the same picture.",
+  "execution": "graph",
+  "graph": {
+    "1": {
+      "class_type": "CheckpointLoaderSimple",
+      "inputs": {
+        "ckpt_name": "sd_xl_turbo_1.0_fp16.safetensors"
+      }
+    },
+    "2": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "clean photographic lighting, natural colours, soft overcast light, high detail",
+        "clip": [
+          "1",
+          1
+        ]
+      }
+    },
+    "3": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "blurry, low quality, watermark, text, deformed, extra fingers",
+        "clip": [
+          "1",
+          1
+        ]
+      }
+    },
+    "4": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "ref_raccoon.png"
+      }
+    },
+    "5": {
+      "class_type": "VAEEncode",
+      "inputs": {
+        "pixels": [
+          "4",
+          0
+        ],
+        "vae": [
+          "1",
+          2
+        ]
+      }
+    },
+    "6": {
+      "class_type": "KSampler",
+      "inputs": {
+        "seed": 7,
+        "steps": 4,
+        "cfg": 1.0,
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "denoise": 0.35,
+        "model": [
+          "1",
+          0
+        ],
+        "positive": [
+          "2",
+          0
+        ],
+        "negative": [
+          "3",
+          0
+        ],
+        "latent_image": [
+          "5",
+          0
+        ]
+      }
+    },
+    "7": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "6",
+          0
+        ],
+        "vae": [
+          "1",
+          2
+        ]
+      }
+    },
+    "8": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "filename_prefix": "studio/restyle_soft",
+        "images": [
+          "7",
+          0
+        ]
+      }
+    }
+  },
+  "output_kind": "image",
+  "timeout_s": 300,
+  "min_vram_gb": 10,
+  "tags": [
+    "img2img",
+    "cleanup",
+    "low-denoise",
+    "sdxl-turbo",
+    "no-download"
+  ],
+  "models": [
+    {
+      "folder": "checkpoints",
+      "file": "sd_xl_turbo_1.0_fp16.safetensors",
+      "purpose": "SDXL-Turbo base model (4-step sampling)"
+    }
+  ],
+  "parameters": [
+    {
+      "key": "image",
+      "label": "Photo",
+      "type": "image",
+      "default": "ref_raccoon.png",
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      },
+      "bind": {
+        "node": "4",
+        "input": "image"
+      }
+    },
+    {
+      "key": "prompt",
+      "label": "Prompt",
+      "type": "text",
+      "multiline": true,
+      "default": "clean photographic lighting, natural colours, soft overcast light, high detail",
+      "required": true,
+      "bind": {
+        "node": "2",
+        "input": "text"
+      }
+    },
+    {
+      "key": "negative",
+      "label": "Negative prompt",
+      "type": "text",
+      "multiline": true,
+      "default": "blurry, low quality, watermark, text, deformed, extra fingers",
+      "bind": {
+        "node": "3",
+        "input": "text"
+      }
+    },
+    {
+      "key": "denoise",
+      "label": "Denoise",
+      "type": "float",
+      "default": 0.35,
+      "min": 0.1,
+      "max": 0.7,
+      "step": 0.05,
+      "bind": {
+        "node": "6",
+        "input": "denoise"
+      }
+    },
+    {
+      "key": "steps",
+      "label": "Steps",
+      "type": "int",
+      "default": 4,
+      "min": 1,
+      "max": 20,
+      "bind": {
+        "node": "6",
+        "input": "steps"
+      }
+    },
+    {
+      "key": "cfg",
+      "label": "CFG scale",
+      "type": "float",
+      "default": 1.0,
+      "min": 0.0,
+      "max": 12.0,
+      "step": 0.1,
+      "bind": {
+        "node": "6",
+        "input": "cfg"
+      }
+    },
+    {
+      "key": "seed",
+      "label": "Seed",
+      "type": "seed",
+      "default": 7,
+      "bind": {
+        "node": "6",
+        "input": "seed"
+      }
+    }
+  ]
+}

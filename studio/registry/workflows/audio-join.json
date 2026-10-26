@@ -1,0 +1,28 @@
+{
+  "id": "audio-join",
+  "name": "Join — concatenate audio files",
+  "category": "audio-generation",
+  "description": "Joins two to twelve audio files into one WAV, resampling each so mixed formats and sample rates still line up.",
+  "execution": "host",
+  "host_tool": "ffmpeg_concat_audio",
+  "output_kind": "audio",
+  "timeout_s": 900,
+  "min_vram_gb": 0,
+  "tags": [
+    "host-tool",
+    "no-gpu",
+    "ffmpeg_concat_audio"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "files",
+      "label": "Files, one per line",
+      "type": "text",
+      "multiline": true,
+      "required": true,
+      "default": "output/studio/tts_ru_RU_00001_.wav\noutput/studio/tts_ru_RU_00002_.wav"
+    }
+  ],
+  "notes": "Every input is resampled to 44.1 kHz stereo and concatenated in the filter graph rather than the concat demuxer, which only works for identical formats."
+}

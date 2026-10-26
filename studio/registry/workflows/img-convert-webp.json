@@ -1,0 +1,58 @@
+{
+  "id": "img-convert-webp",
+  "name": "Convert — to WebP",
+  "category": "image-editing",
+  "description": "Re-encodes to WebP at quality 85 — typically a third of the PNG size with no visible loss, which is what a web gallery wants.",
+  "execution": "host",
+  "host_tool": "image_convert",
+  "output_kind": "image",
+  "timeout_s": 900,
+  "min_vram_gb": 0,
+  "tags": [
+    "host-tool",
+    "no-gpu",
+    "image_convert"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "image",
+      "label": "Photo",
+      "type": "image",
+      "default": "ref_raccoon.png",
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      }
+    },
+    {
+      "key": "format",
+      "label": "Output format",
+      "type": "choice",
+      "options": [
+        "webp",
+        "jpg",
+        "png"
+      ],
+      "default": "webp"
+    },
+    {
+      "key": "quality",
+      "label": "Quality",
+      "type": "int",
+      "default": 85,
+      "min": 1,
+      "max": 100
+    },
+    {
+      "key": "max_side",
+      "label": "Max longest side (0 = keep)",
+      "type": "int",
+      "default": 0,
+      "min": 0,
+      "max": 8192
+    }
+  ],
+  "notes": "WebP is written lossy by default here; pass quality 100 for a near-lossless file."
+}

@@ -1,0 +1,37 @@
+{
+  "id": "audio-speed-up",
+  "name": "Speed — 1.15× faster (no pitch change)",
+  "category": "audio-generation",
+  "description": "15% faster narration without the chipmunk effect: atempo changes tempo and leaves pitch alone.",
+  "execution": "host",
+  "host_tool": "ffmpeg_audio_speed",
+  "output_kind": "audio",
+  "timeout_s": 900,
+  "min_vram_gb": 0,
+  "tags": [
+    "host-tool",
+    "no-gpu",
+    "ffmpeg_audio_speed"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "audio",
+      "label": "Audio file (name in input/ or path in project)",
+      "type": "string",
+      "default": "output/studio/tts_ru_RU_00001_.wav",
+      "required": true
+    },
+    {
+      "key": "speed",
+      "label": "Tempo multiplier",
+      "type": "float",
+      "default": 1.15,
+      "min": 0.5,
+      "max": 2,
+      "step": 0.05,
+      "unit": "×"
+    }
+  ],
+  "notes": "Up to 1.5× still sounds natural for narration; beyond that most voices start sounding hurried."
+}

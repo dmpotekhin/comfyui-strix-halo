@@ -1,0 +1,59 @@
+{
+  "id": "vid-burn-subs",
+  "name": "Video — burn subtitles into the picture",
+  "category": "video-generation",
+  "description": "Renders subtitles as pixels into the video (hard subs). Use it for platforms that ignore soft subtitle tracks and for previews.",
+  "execution": "host",
+  "host_tool": "ffmpeg_burn_subs",
+  "output_kind": "video",
+  "timeout_s": 1800,
+  "tags": [
+    "video",
+    "subtitles",
+    "hard-subs",
+    "ffmpeg",
+    "stage-s"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "video",
+      "label": "Video",
+      "type": "string",
+      "required": true,
+      "default": "input/_s5_v25.mp4"
+    },
+    {
+      "key": "subtitles",
+      "label": "Subtitle file (.srt/.vtt/.ass)",
+      "type": "string",
+      "required": true,
+      "default": "output/studio/asr_tts_ru_RU_00001_00002_.srt"
+    },
+    {
+      "key": "font_size",
+      "label": "Font size",
+      "type": "int",
+      "default": 22,
+      "min": 8,
+      "max": 72,
+      "bind": {
+        "node": "host",
+        "input": "font_size"
+      }
+    },
+    {
+      "key": "crf",
+      "label": "x264 quality (lower = better)",
+      "type": "int",
+      "default": 20,
+      "min": 14,
+      "max": 30,
+      "bind": {
+        "node": "host",
+        "input": "crf"
+      }
+    }
+  ],
+  "notes": "Re-encodes the picture, so it is slower and lossier than ffmpeg_mux_subs. Feed it the .srt that asr-large or asr-transcribe writes into output/studio."
+}

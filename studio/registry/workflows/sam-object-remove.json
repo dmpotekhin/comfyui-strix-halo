@@ -1,0 +1,256 @@
+{
+  "id": "sam-object-remove",
+  "name": "Remove an object — by point (MobileSAM + SDXL-Turbo)",
+  "category": "image-editing",
+  "description": "Cuts the prompted object out with MobileSAM, then inpaints the hole with a continuation of the surroundings. One prompt point, no manual mask.",
+  "execution": "chain",
+  "host_tool": "sam_segment",
+  "chain_bind": {
+    "node": "4",
+    "input": "image"
+  },
+  "graph": {
+    "1": {
+      "class_type": "CheckpointLoaderSimple",
+      "inputs": {
+        "ckpt_name": "sd_xl_turbo_1.0_fp16.safetensors"
+      }
+    },
+    "2": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "empty background, seamless continuation of the surface, clean photorealistic texture, natural light",
+        "clip": [
+          "1",
+          1
+        ]
+      }
+    },
+    "3": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "blurry, low quality, watermark, text, deformed, extra fingers, duplicated object",
+        "clip": [
+          "1",
+          1
+        ]
+      }
+    },
+    "4": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "example.png"
+      }
+    },
+    "5": {
+      "class_type": "VAEEncodeForInpaint",
+      "inputs": {
+        "pixels": [
+          "4",
+          0
+        ],
+        "vae": [
+          "1",
+          2
+        ],
+        "mask": [
+          "10",
+          0
+        ],
+        "grow_mask_by": 14
+      }
+    },
+    "6": {
+      "class_type": "KSampler",
+      "inputs": {
+        "seed": 42,
+        "steps": 6,
+        "cfg": 1.0,
+        "sampler_name": "euler",
+        "scheduler": "normal",
+        "denoise": 1.0,
+        "model": [
+          "1",
+          0
+        ],
+        "positive": [
+          "2",
+          0
+        ],
+        "negative": [
+          "3",
+          0
+        ],
+        "latent_image": [
+          "5",
+          0
+        ]
+      }
+    },
+    "7": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "6",
+          0
+        ],
+        "vae": [
+          "1",
+          2
+        ]
+      }
+    },
+    "9": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "filename_prefix": "studio/sam_remove",
+        "images": [
+          "7",
+          0
+        ]
+      }
+    },
+    "10": {
+      "class_type": "InvertMask",
+      "inputs": {
+        "mask": [
+          "4",
+          1
+        ]
+      }
+    }
+  },
+  "output_kind": "image",
+  "timeout_s": 600,
+  "min_vram_gb": 10,
+  "tags": [
+    "segmentation",
+    "sam",
+    "inpaint",
+    "chain",
+    "stage-s"
+  ],
+  "models": [
+    {
+      "folder": "host:studio/tools/vision-models",
+      "file": "mobilesam.encoder.onnx",
+      "purpose": "MobileSAM ViT-T encoder (ONNX, CPU)"
+    },
+    {
+      "folder": "host:studio/tools/vision-models",
+      "file": "mobilesam.decoder.onnx",
+      "purpose": "MobileSAM mask decoder (ONNX, CPU)"
+    },
+    {
+      "folder": "checkpoints",
+      "file": "sd_xl_turbo_1.0_fp16.safetensors",
+      "purpose": "SDXL-Turbo base model (6-step sampling)"
+    }
+  ],
+  "parameters": [
+    {
+      "key": "image",
+      "label": "Photo",
+      "type": "image",
+      "default": "ref_raccoon.png",
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      }
+    },
+    {
+      "key": "points",
+      "label": "Points to the object (x,y;x,y — empty means centre)",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "key": "labels",
+      "label": "Labels (1=object, 0=background; empty = all 1)",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "key": "mode",
+      "label": "Mask mode",
+      "type": "choice",
+      "options": [
+        "cutout"
+      ],
+      "default": "cutout"
+    },
+    {
+      "key": "prompt",
+      "label": "What should be there instead",
+      "type": "text",
+      "multiline": true,
+      "default": "empty background, seamless continuation of the surface, clean photorealistic texture, natural light",
+      "required": true,
+      "bind": {
+        "node": "2",
+        "input": "text"
+      }
+    },
+    {
+      "key": "negative",
+      "label": "Negative prompt",
+      "type": "text",
+      "multiline": true,
+      "default": "blurry, low quality, watermark, text, deformed, extra fingers, duplicated object",
+      "required": true,
+      "bind": {
+        "node": "3",
+        "input": "text"
+      }
+    },
+    {
+      "key": "grow_mask_by",
+      "label": "Grow mask by (px)",
+      "type": "int",
+      "default": 14,
+      "min": 0,
+      "max": 64,
+      "bind": {
+        "node": "5",
+        "input": "grow_mask_by"
+      }
+    },
+    {
+      "key": "steps",
+      "label": "Steps",
+      "type": "int",
+      "default": 6,
+      "min": 1,
+      "max": 20,
+      "bind": {
+        "node": "6",
+        "input": "steps"
+      }
+    },
+    {
+      "key": "cfg",
+      "label": "CFG scale",
+      "type": "float",
+      "default": 1.0,
+      "min": 0.0,
+      "max": 12.0,
+      "step": 0.1,
+      "bind": {
+        "node": "6",
+        "input": "cfg"
+      }
+    },
+    {
+      "key": "seed",
+      "label": "Seed",
+      "type": "seed",
+      "default": 42,
+      "bind": {
+        "node": "6",
+        "input": "seed"
+      }
+    }
+  ],
+  "notes": "Chain: MobileSAM cuts the prompted object out on the host, then SDXL-Turbo inpaints the hole. Two passes over the same mask, so a bad prompt point shows up as a half-erased object rather than as an error."
+}

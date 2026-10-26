@@ -1,0 +1,57 @@
+{
+  "id": "tts-ru-pitch-up",
+  "name": "Speech — Russian, higher voice",
+  "category": "audio-generation",
+  "description": "The same Russian voice shifted three semitones up, duration preserved (resample + tempo compensation).",
+  "execution": "host",
+  "host_tool": "piper_tts",
+  "output_kind": "audio",
+  "timeout_s": 180,
+  "min_vram_gb": 0,
+  "tags": [
+    "tts",
+    "piper",
+    "speech",
+    "ru",
+    "no-gpu",
+    "no-download"
+  ],
+  "models": [
+    {
+      "folder": "host:studio/assets/voices",
+      "file": "ru_RU-irina-medium.onnx",
+      "purpose": "Piper voice model, ONNX Runtime CPU"
+    }
+  ],
+  "parameters": [
+    {
+      "key": "text",
+      "label": "Text to speak",
+      "type": "text",
+      "multiline": true,
+      "required": true,
+      "default": "Привет! Это локальный синтез речи. Всё считается на твоём ноутбуке, без интернета."
+    },
+    {
+      "key": "voice",
+      "label": "Voice",
+      "type": "choice",
+      "options": [
+        "ru_RU-irina-medium"
+      ],
+      "default": "ru_RU-irina-medium",
+      "required": true
+    },
+    {
+      "key": "pitch",
+      "label": "Pitch shift",
+      "type": "float",
+      "default": 3.0,
+      "min": -12.0,
+      "max": 12.0,
+      "step": 0.5,
+      "unit": "semitones"
+    }
+  ],
+  "notes": "Pitch is applied after synthesis: the WAV is resampled to move the spectrum, then atempo restores the original duration, so only the voice moves and the timing does not."
+}

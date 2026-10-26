@@ -1,0 +1,69 @@
+{
+  "id": "img-resize-2048",
+  "name": "Resize — 2048 px wide",
+  "category": "image-editing",
+  "description": "Scales to 2048 px wide for a wallpaper or a print preview.",
+  "execution": "host",
+  "host_tool": "image_resize",
+  "output_kind": "image",
+  "timeout_s": 900,
+  "min_vram_gb": 0,
+  "tags": [
+    "host-tool",
+    "no-gpu",
+    "image_resize"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "image",
+      "label": "Photo",
+      "type": "image",
+      "default": "ref_raccoon.png",
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      }
+    },
+    {
+      "key": "width",
+      "label": "Width",
+      "type": "int",
+      "default": 2048,
+      "min": 0,
+      "max": 8192
+    },
+    {
+      "key": "height",
+      "label": "Height (0 = keep ratio)",
+      "type": "int",
+      "default": 0,
+      "min": 0,
+      "max": 8192
+    },
+    {
+      "key": "fit",
+      "label": "Fit",
+      "type": "choice",
+      "options": [
+        "contain",
+        "cover",
+        "stretch"
+      ],
+      "default": "contain"
+    },
+    {
+      "key": "format",
+      "label": "Output format",
+      "type": "choice",
+      "options": [
+        "png",
+        "jpg",
+        "webp"
+      ],
+      "default": "png"
+    }
+  ],
+  "notes": null
+}

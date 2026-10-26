@@ -1,0 +1,46 @@
+{
+  "id": "vid-to-gif",
+  "name": "Video to GIF",
+  "category": "video-generation",
+  "description": "Converts a clip to a looping GIF at a chosen frame rate and width \u2014 handy for previews and sharing, no re-encode of the source.",
+  "execution": "host",
+  "host_tool": "ffmpeg_video_to_gif",
+  "output_kind": "image",
+  "timeout_s": 600,
+  "min_vram_gb": 0,
+  "tags": [
+    "video",
+    "gif",
+    "ffmpeg",
+    "convert",
+    "host-tool",
+    "no-gpu"
+  ],
+  "models": [],
+  "notes": "GIF is 256 colours by definition; for real video use the MP4 workflows instead.",
+  "parameters": [
+    {
+      "key": "video",
+      "label": "Video file (absolute path inside the project)",
+      "type": "string",
+      "required": true,
+      "default": "/home/dmitry/workspace/comfyui-strix-halo/output/studio/i2v_00002_.mp4"
+    },
+    {
+      "key": "fps",
+      "label": "Frames per second",
+      "type": "int",
+      "default": 12,
+      "min": 1,
+      "max": 30
+    },
+    {
+      "key": "width",
+      "label": "Width (px)",
+      "type": "int",
+      "default": 512,
+      "min": 64,
+      "max": 1280
+    }
+  ]
+}

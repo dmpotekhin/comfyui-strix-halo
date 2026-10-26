@@ -1,0 +1,37 @@
+{
+  "id": "txt2img-turbo",
+  "name": "Text to Image — SDXL Turbo (fast draft)",
+  "category": "image-generation",
+  "description": "Fastest path to a usable image. SDXL Turbo at 4 steps / cfg 1.0. Use it to explore composition, then switch to the Animagine workflow for final quality.",
+  "output_kind": "image",
+  "min_vram_gb": 8,
+  "tags": ["text2img", "fast", "draft", "sdxl", "turbo"],
+  "models": [
+    {"folder": "checkpoints", "file": "sd_xl_turbo_1.0_fp16.safetensors", "purpose": "base model"}
+  ],
+  "notes": "SDXL Turbo is licensed CC BY-NC-SA 4.0 by Stability AI — non-commercial use only. For commercial output use the Animagine workflow instead.",
+  "graph": {
+    "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "sd_xl_turbo_1.0_fp16.safetensors"}},
+    "2": {"class_type": "CLIPTextEncode", "inputs": {"text": "a friendly red fox sitting in tall autumn grass, golden hour light, shallow depth of field, photographic", "clip": ["1", 1]}},
+    "3": {"class_type": "CLIPTextEncode", "inputs": {"text": "blurry, low quality, watermark, text, jpeg artifacts, deformed", "clip": ["1", 1]}},
+    "4": {"class_type": "EmptyLatentImage", "inputs": {"width": 1024, "height": 1024, "batch_size": 1}},
+    "5": {"class_type": "KSampler", "inputs": {"seed": 42, "steps": 4, "cfg": 1.0, "sampler_name": "euler", "scheduler": "normal", "denoise": 1.0, "model": ["1", 0], "positive": ["2", 0], "negative": ["3", 0], "latent_image": ["4", 0]}},
+    "6": {"class_type": "VAEDecode", "inputs": {"samples": ["5", 0], "vae": ["1", 2]}},
+    "7": {"class_type": "SaveImage", "inputs": {"filename_prefix": "studio/turbo", "images": ["6", 0]}}
+  },
+  "parameters": [
+    {"key": "prompt", "label": "Prompt", "type": "text", "bind": {"node": "2", "input": "text"}, "required": true, "multiline": true,
+     "default": "a friendly red fox sitting in tall autumn grass, golden hour light, shallow depth of field, photographic"},
+    {"key": "negative", "label": "Negative prompt", "type": "text", "bind": {"node": "3", "input": "text"}, "multiline": true,
+     "default": "blurry, low quality, watermark, text, jpeg artifacts, deformed"},
+    {"key": "width", "label": "Width", "type": "int", "bind": {"node": "4", "input": "width"}, "default": 1024, "min": 512, "max": 1536, "step": 64, "unit": "px"},
+    {"key": "height", "label": "Height", "type": "int", "bind": {"node": "4", "input": "height"}, "default": 1024, "min": 512, "max": 1536, "step": 64, "unit": "px"},
+    {"key": "steps", "label": "Steps", "type": "int", "bind": {"node": "5", "input": "steps"}, "default": 4, "min": 1, "max": 8,
+     "description": "Turbo is trained for 1-4 steps; more steps rarely help."},
+    {"key": "cfg", "label": "CFG", "type": "float", "bind": {"node": "5", "input": "cfg"}, "default": 1.0, "min": 1.0, "max": 2.0, "step": 0.1,
+     "description": "Turbo runs at cfg 1.0. Raising it degrades the image."},
+    {"key": "batch_size", "label": "Images", "type": "int", "bind": {"node": "4", "input": "batch_size"}, "default": 1, "min": 1, "max": 4},
+    {"key": "seed", "label": "Seed", "type": "seed", "bind": {"node": "5", "input": "seed"}, "default": -1, "seed_source": true,
+     "description": "-1 picks a random seed and records the value used."}
+  ]
+}

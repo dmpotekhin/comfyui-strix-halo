@@ -1,0 +1,113 @@
+{
+  "id": "video-assemble",
+  "name": "Assemble images into an MP4",
+  "category": "video-generation",
+  "description": "Turns stills into a video file with core ComfyUI nodes only \u2014 no diffusion model, no downloads. Each image becomes one frame; CreateVideo muxes them and SaveVideo writes H.264 MP4 into the studio output folder.",
+  "output_kind": "video",
+  "timeout_s": 300,
+  "min_vram_gb": 0,
+  "tags": [
+    "video",
+    "assemble",
+    "frames",
+    "mp4",
+    "no-model",
+    "slideshow"
+  ],
+  "models": [],
+  "notes": "Both inputs must have identical dimensions: ImageBatch concatenates, it does not resize \u2014 run image-resize first if the sizes differ. With two images the clip is deliberately short; the point is the pipeline (still -> frames -> mp4 -> gallery), which is what frame extraction and storyboard work build on. Costs milliseconds and never touches the GPU.",
+  "graph": {
+    "1": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "ref_ginger.png"
+      }
+    },
+    "2": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "ref_raccoon.png"
+      }
+    },
+    "3": {
+      "class_type": "ImageBatch",
+      "inputs": {
+        "image1": [
+          "1",
+          0
+        ],
+        "image2": [
+          "2",
+          0
+        ]
+      }
+    },
+    "4": {
+      "class_type": "CreateVideo",
+      "inputs": {
+        "images": [
+          "3",
+          0
+        ],
+        "fps": 12.0
+      }
+    },
+    "5": {
+      "class_type": "SaveVideo",
+      "inputs": {
+        "video": [
+          "4",
+          0
+        ],
+        "filename_prefix": "studio/assemble",
+        "format": "mp4",
+        "codec": "h264"
+      }
+    }
+  },
+  "parameters": [
+    {
+      "key": "image",
+      "label": "Start image",
+      "type": "image",
+      "bind": {
+        "node": "1",
+        "input": "image"
+      },
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      },
+      "default": "ref_ginger.png"
+    },
+    {
+      "key": "image_b",
+      "label": "Second image",
+      "type": "image",
+      "bind": {
+        "node": "2",
+        "input": "image"
+      },
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      },
+      "default": "ref_raccoon.png"
+    },
+    {
+      "key": "fps",
+      "label": "FPS",
+      "type": "float",
+      "bind": {
+        "node": "4",
+        "input": "fps"
+      },
+      "default": 12.0,
+      "min": 8.0,
+      "max": 30.0,
+      "step": 1.0
+    }
+  ]
+}

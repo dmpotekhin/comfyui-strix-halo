@@ -1,0 +1,43 @@
+{
+  "id": "vid-aspect-16x9-pad",
+  "name": "Video — 16:9 with bars",
+  "category": "video-generation",
+  "description": "Pads a vertical or square clip into 16:9 so it can sit in a horizontal edit.",
+  "execution": "host",
+  "host_tool": "ffmpeg_video_aspect",
+  "output_kind": "video",
+  "timeout_s": 900,
+  "min_vram_gb": 0,
+  "tags": [
+    "host-tool",
+    "no-gpu",
+    "ffmpeg_video_aspect"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "video",
+      "label": "Video file (name in input/ or path in project)",
+      "type": "string",
+      "default": "output/studio/i2v_00002_.mp4",
+      "required": true
+    },
+    {
+      "key": "aspect",
+      "label": "Aspect ratio",
+      "type": "string",
+      "default": "16:9"
+    },
+    {
+      "key": "mode",
+      "label": "Mode",
+      "type": "choice",
+      "options": [
+        "pad",
+        "crop"
+      ],
+      "default": "pad"
+    }
+  ],
+  "notes": "The target size is computed from the real frame size via ffprobe, then rounded down to even numbers; the filter itself is a plain scale+pad or crop."
+}

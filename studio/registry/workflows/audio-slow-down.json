@@ -1,0 +1,37 @@
+{
+  "id": "audio-slow-down",
+  "name": "Speed — 0.9× slower",
+  "category": "audio-generation",
+  "description": "10% slower, pitch preserved — useful for language-learning material and for fitting a line into a longer scene.",
+  "execution": "host",
+  "host_tool": "ffmpeg_audio_speed",
+  "output_kind": "audio",
+  "timeout_s": 900,
+  "min_vram_gb": 0,
+  "tags": [
+    "host-tool",
+    "no-gpu",
+    "ffmpeg_audio_speed"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "audio",
+      "label": "Audio file (name in input/ or path in project)",
+      "type": "string",
+      "default": "output/studio/tts_ru_RU_00001_.wav",
+      "required": true
+    },
+    {
+      "key": "speed",
+      "label": "Tempo multiplier",
+      "type": "float",
+      "default": 0.9,
+      "min": 0.5,
+      "max": 2,
+      "step": 0.05,
+      "unit": "×"
+    }
+  ],
+  "notes": "At 0.8× and below, speech starts to sound drowsy; prefer splitting the sentence over slowing it."
+}

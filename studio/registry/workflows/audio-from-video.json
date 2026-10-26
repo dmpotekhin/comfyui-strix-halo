@@ -1,0 +1,30 @@
+{
+  "id": "audio-from-video",
+  "name": "Extract audio track from a video",
+  "category": "audio-generation",
+  "description": "Pulls the audio out of any video file into a 44.1 kHz mono WAV \u2014 the first step for transcription, subtitles, re-muxing or voice replacement.",
+  "execution": "host",
+  "host_tool": "ffmpeg_extract_audio",
+  "output_kind": "audio",
+  "timeout_s": 600,
+  "min_vram_gb": 0,
+  "tags": [
+    "audio",
+    "ffmpeg",
+    "extract",
+    "wav",
+    "host-tool",
+    "no-gpu"
+  ],
+  "models": [],
+  "notes": "Accepts only paths inside the project directory \u2014 a form field must not become an arbitrary file read. ffmpeg 9.0.1 from the Hermes tools directory.",
+  "parameters": [
+    {
+      "key": "video",
+      "label": "Video file (absolute path inside the project)",
+      "type": "string",
+      "required": true,
+      "default": "/home/dmitry/workspace/comfyui-strix-halo/output/studio/i2v_00002_.mp4"
+    }
+  ]
+}

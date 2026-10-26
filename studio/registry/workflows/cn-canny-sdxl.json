@@ -1,0 +1,292 @@
+{
+  "id": "cn-canny-sdxl",
+  "name": "Edge-guided generation \u2014 SDXL Canny ControlNet",
+  "category": "image-generation",
+  "description": "Keeps the silhouette of a reference image and repaints everything inside it. Canny extracts the edges, the ControlNet feeds them to the sampler as a soft constraint, and SDXL Turbo paints in a handful of steps. The strength slider decides how literally the edges are obeyed.",
+  "output_kind": "image",
+  "min_vram_gb": 12,
+  "timeout_s": 600,
+  "tags": [
+    "controlnet",
+    "canny",
+    "structure",
+    "sdxl",
+    "turbo",
+    "img2img"
+  ],
+  "models": [
+    {
+      "folder": "checkpoints",
+      "file": "sd_xl_turbo_1.0_fp16.safetensors",
+      "purpose": "base sampler"
+    },
+    {
+      "folder": "controlnet",
+      "file": "controlnet-canny-sdxl-1.0.safetensors",
+      "purpose": "edge conditioning"
+    }
+  ],
+  "notes": "The reference is scaled to the exact latent size first \u2014 a mismatched edge map was visibly bleeding into the render. Strength <=0.6 and end_percent 0.7 let the sampler paint over the edges instead of tracing them. Thresholds are normalised 0-0.99 in ComfyUI 0.15 (not 0-255). SDXL Turbo weights are CC BY-NC-SA 4.0; the ControlNet is Apache-2.0.",
+  "graph": {
+    "1": {
+      "class_type": "CheckpointLoaderSimple",
+      "inputs": {
+        "ckpt_name": "sd_xl_turbo_1.0_fp16.safetensors"
+      }
+    },
+    "2": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "a red fox in a mossy forest, cinematic light, detailed fur",
+        "clip": [
+          "1",
+          1
+        ]
+      }
+    },
+    "3": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "blurry, low quality, watermark, text, deformed",
+        "clip": [
+          "1",
+          1
+        ]
+      }
+    },
+    "4": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "ref_ginger.png"
+      }
+    },
+    "5": {
+      "class_type": "Canny",
+      "inputs": {
+        "image": [
+          "12",
+          0
+        ],
+        "low_threshold": 0.4,
+        "high_threshold": 0.8
+      }
+    },
+    "6": {
+      "class_type": "ControlNetLoader",
+      "inputs": {
+        "control_net_name": "controlnet-canny-sdxl-1.0.safetensors"
+      }
+    },
+    "7": {
+      "class_type": "ControlNetApplyAdvanced",
+      "inputs": {
+        "positive": [
+          "2",
+          0
+        ],
+        "negative": [
+          "3",
+          0
+        ],
+        "control_net": [
+          "6",
+          0
+        ],
+        "image": [
+          "5",
+          0
+        ],
+        "strength": 0.55,
+        "start_percent": 0.0,
+        "end_percent": 0.7
+      }
+    },
+    "8": {
+      "class_type": "EmptyLatentImage",
+      "inputs": {
+        "width": 1024,
+        "height": 1024,
+        "batch_size": 1
+      }
+    },
+    "9": {
+      "class_type": "KSampler",
+      "inputs": {
+        "model": [
+          "1",
+          0
+        ],
+        "positive": [
+          "7",
+          0
+        ],
+        "negative": [
+          "7",
+          1
+        ],
+        "latent_image": [
+          "8",
+          0
+        ],
+        "seed": 11,
+        "steps": 8,
+        "cfg": 1.0,
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "denoise": 1.0
+      }
+    },
+    "10": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "9",
+          0
+        ],
+        "vae": [
+          "1",
+          2
+        ]
+      }
+    },
+    "11": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "images": [
+          "10",
+          0
+        ],
+        "filename_prefix": "studio/cn_canny"
+      }
+    },
+    "12": {
+      "class_type": "ImageScale",
+      "inputs": {
+        "image": [
+          "4",
+          0
+        ],
+        "upscale_method": "lanczos",
+        "width": 1024,
+        "height": 1024,
+        "crop": "center"
+      }
+    }
+  },
+  "parameters": [
+    {
+      "key": "image",
+      "label": "Reference image",
+      "type": "image",
+      "bind": {
+        "node": "4",
+        "input": "image"
+      },
+      "default": "ref_ginger.png",
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      }
+    },
+    {
+      "key": "prompt",
+      "label": "Prompt",
+      "type": "text",
+      "multiline": true,
+      "bind": {
+        "node": "2",
+        "input": "text"
+      },
+      "default": "a red fox in a mossy forest, cinematic light, detailed fur",
+      "required": true
+    },
+    {
+      "key": "negative",
+      "label": "Negative prompt",
+      "type": "text",
+      "multiline": true,
+      "bind": {
+        "node": "3",
+        "input": "text"
+      },
+      "default": "blurry, low quality, watermark, text, deformed"
+    },
+    {
+      "key": "strength",
+      "label": "ControlNet strength",
+      "type": "float",
+      "bind": {
+        "node": "7",
+        "input": "strength"
+      },
+      "default": 0.55,
+      "min": 0.0,
+      "max": 1.5,
+      "step": 0.05
+    },
+    {
+      "key": "low_threshold",
+      "label": "Canny low",
+      "type": "float",
+      "bind": {
+        "node": "5",
+        "input": "low_threshold"
+      },
+      "default": 0.4,
+      "min": 0.01,
+      "max": 0.99,
+      "step": 0.01
+    },
+    {
+      "key": "high_threshold",
+      "label": "Canny high",
+      "type": "float",
+      "bind": {
+        "node": "5",
+        "input": "high_threshold"
+      },
+      "default": 0.8,
+      "min": 0.01,
+      "max": 0.99,
+      "step": 0.01
+    },
+    {
+      "key": "steps",
+      "label": "Steps",
+      "type": "int",
+      "bind": {
+        "node": "9",
+        "input": "steps"
+      },
+      "default": 8,
+      "min": 1,
+      "max": 20,
+      "step": 1
+    },
+    {
+      "key": "cfg",
+      "label": "CFG",
+      "type": "float",
+      "bind": {
+        "node": "9",
+        "input": "cfg"
+      },
+      "default": 1.0,
+      "min": 1.0,
+      "max": 3.0,
+      "step": 0.1
+    },
+    {
+      "key": "seed",
+      "label": "Seed",
+      "type": "seed",
+      "bind": {
+        "node": "9",
+        "input": "seed"
+      },
+      "default": 11,
+      "seed_source": true
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "id": "vid-compress-tiny",
+  "name": "Video — compress hard (854 px)",
+  "category": "video-generation",
+  "description": "CRF 32 at 854 px — a preview that still reads, for sending over a chat.",
+  "execution": "host",
+  "host_tool": "ffmpeg_video_compress",
+  "output_kind": "video",
+  "timeout_s": 900,
+  "min_vram_gb": 0,
+  "tags": [
+    "host-tool",
+    "no-gpu",
+    "ffmpeg_video_compress"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "video",
+      "label": "Video file (name in input/ or path in project)",
+      "type": "string",
+      "default": "output/studio/i2v_00002_.mp4",
+      "required": true
+    },
+    {
+      "key": "crf",
+      "label": "x264 CRF",
+      "type": "int",
+      "default": 32,
+      "min": 0,
+      "max": 51
+    },
+    {
+      "key": "preset",
+      "label": "Encoder preset",
+      "type": "choice",
+      "options": [
+        "ultrafast",
+        "fast",
+        "medium",
+        "slow",
+        "veryslow"
+      ],
+      "default": "medium"
+    },
+    {
+      "key": "max_width",
+      "label": "Max width (0 = keep)",
+      "type": "int",
+      "default": 854,
+      "min": 0,
+      "max": 7680
+    }
+  ],
+  "notes": "Higher CRF means smaller and softer. `fast`/`medium` are the sensible compromise on this machine; `veryslow` buys a few percent for minutes."
+}

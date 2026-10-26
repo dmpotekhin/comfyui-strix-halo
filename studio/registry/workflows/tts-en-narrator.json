@@ -1,0 +1,66 @@
+{
+  "id": "tts-en-narrator",
+  "name": "Speech — English, documentary narrator",
+  "category": "audio-generation",
+  "description": "English narrator: slightly slower and a touch lower, the calm documentary read.",
+  "execution": "host",
+  "host_tool": "piper_tts",
+  "output_kind": "audio",
+  "timeout_s": 180,
+  "min_vram_gb": 0,
+  "tags": [
+    "tts",
+    "piper",
+    "speech",
+    "en",
+    "no-gpu",
+    "no-download"
+  ],
+  "models": [
+    {
+      "folder": "host:studio/assets/voices",
+      "file": "en_US-lessac-medium.onnx",
+      "purpose": "Piper voice model, ONNX Runtime CPU"
+    }
+  ],
+  "parameters": [
+    {
+      "key": "text",
+      "label": "Text to speak",
+      "type": "text",
+      "multiline": true,
+      "required": true,
+      "default": "Hello! This is local speech synthesis, running entirely on this machine."
+    },
+    {
+      "key": "voice",
+      "label": "Voice",
+      "type": "choice",
+      "options": [
+        "en_US-lessac-medium"
+      ],
+      "default": "en_US-lessac-medium",
+      "required": true
+    },
+    {
+      "key": "length_scale",
+      "label": "Length scale (higher = slower)",
+      "type": "float",
+      "default": 1.05,
+      "min": 0.5,
+      "max": 2.0,
+      "step": 0.05
+    },
+    {
+      "key": "pitch",
+      "label": "Pitch shift",
+      "type": "float",
+      "default": -1.5,
+      "min": -12.0,
+      "max": 12.0,
+      "step": 0.5,
+      "unit": "semitones"
+    }
+  ],
+  "notes": "Pitch is applied after synthesis: the WAV is resampled to move the spectrum, then atempo restores the original duration, so only the voice moves and the timing does not."
+}

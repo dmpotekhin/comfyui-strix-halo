@@ -1,0 +1,258 @@
+{
+  "_comment": "Curated download catalog. The download manager refuses any model id that is not here, and only allows https URLs on Hugging Face / GitHub, so this file is the whole allow-list. size_bytes and sha256 are measured from the installed copy (sha256 omitted when it was never verified against the publisher).",
+  "version": 1,
+  "updated": "2026-10-28",
+  "models": [
+    {
+      "id": "ace-step-v1-3.5b",
+      "title": "ACE-Step v1 3.5B (all in one: model + T5 + DCAE)",
+      "folder": "checkpoints",
+      "file": "ace_step_v1_3.5b.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/ACE-Step/resolve/main/all_in_one/ace_step_v1_3.5b.safetensors",
+      "license": "Apache-2.0",
+      "size_bytes": 7699743341,
+      "sha256": "f07cad74c4adce52ca14ca1bdf74cf3c14cbafb0823b95eca4459467fa369f40",
+      "used_by": [
+        "music-ace-step"
+      ],
+      "gated": false
+    },
+    {
+      "id": "animagine-xl-4.0",
+      "title": "Animagine XL 4.0 (anime SDXL checkpoint)",
+      "folder": "checkpoints",
+      "file": "animagine-xl-4.0.safetensors",
+      "url": "https://huggingface.co/cagliostrolab/animagine-xl-4.0/resolve/main/animagine-xl-4.0.safetensors",
+      "license": "CreativeML OpenRAIL++-M (Fair AI Public License 1.0-SD)",
+      "size_bytes": 6938434056,
+      "sha256": "1d5b43ff75b6ab598502d4c779d2fbfa3dceca51c60c3b609640a60772333916",
+      "used_by": [
+        "character-ipadapter",
+        "img2img-anime",
+        "img2img-restyle",
+        "img2img-turbo",
+        "style-anime",
+        "txt2img-animagine",
+        "txt2img-upscale"
+      ],
+      "gated": false
+    },
+    {
+      "id": "clip-vit-h-14-laion2b",
+      "title": "CLIP ViT-H/14 laion2B-s32B-b79K (vision tower for IP-Adapter)",
+      "folder": "clip_vision",
+      "file": "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors",
+      "url": "",
+      "license": "MIT",
+      "size_bytes": 2528373448,
+      "sha256": "6ca9667da1ca9e0b0f75e46bb030f7e011f44f86cbfb8d5a36590fcd7507b030",
+      "used_by": [
+        "character-ipadapter",
+        "video-i2v-wan22"
+      ],
+      "gated": false
+    },
+    {
+      "id": "controlnet-canny-sdxl-1.0",
+      "title": "ControlNet Canny SDXL 1.0 (xinsir)",
+      "folder": "controlnet",
+      "file": "controlnet-canny-sdxl-1.0.safetensors",
+      "url": "https://huggingface.co/xinsir/controlnet-canny-sdxl-1.0/resolve/main/diffusion_pytorch_model.safetensors",
+      "license": "Apache-2.0",
+      "size_bytes": 2502139104,
+      "sha256": "bf47cd757ceaf2572c53321329ef819ea38c09a6e3783588387913cd94dff47c",
+      "used_by": [
+        "cn-canny-sdxl",
+        "cn-dual-canny-depth",
+        "cn-triple-lock"
+      ],
+      "gated": false
+    },
+    {
+      "id": "controlnet-depth-sdxl-1.0",
+      "title": "ControlNet Depth SDXL 1.0 (xinsir)",
+      "folder": "controlnet",
+      "file": "controlnet-depth-sdxl-1.0.safetensors",
+      "url": "https://huggingface.co/xinsir/controlnet-depth-sdxl-1.0/resolve/main/diffusion_pytorch_model.safetensors",
+      "license": "Apache-2.0",
+      "size_bytes": 2502139104,
+      "sha256": "ea3770af4c33ea8ba8dccc0106ec5d5c5c6e504eb382119a3ccac3c9d973d344",
+      "used_by": [
+        "cn-depth-sdxl",
+        "cn-dual-canny-depth"
+      ],
+      "gated": false
+    },
+    {
+      "id": "ip-adapter-plus-sdxl-vit-h",
+      "title": "IP-Adapter Plus SDXL (ViT-H image prompt)",
+      "folder": "ipadapter",
+      "file": "ip-adapter-plus_sdxl_vit-h.safetensors",
+      "url": "",
+      "license": "Apache-2.0",
+      "size_bytes": 847517512,
+      "sha256": "3f5062b8400c94b7159665b21ba5c62acdcd7682262743d7f2aefedef00e6581",
+      "used_by": [
+        "character-ipadapter"
+      ],
+      "gated": false
+    },
+    {
+      "id": "mobilesam-decoder",
+      "title": "MobileSAM mask decoder (ONNX, host CPU)",
+      "folder": "vision-models",
+      "file": "mobilesam.decoder.onnx",
+      "url": "https://huggingface.co/PulpCut/mobilesam-onnx/resolve/main/mobilesam.decoder.onnx",
+      "license": "Apache-2.0",
+      "size_bytes": 16514086,
+      "sha256": "b0735abf07c7affddf20fffc3ce750f44af387ee6a7323880e909389ed15d279",
+      "used_by": [],
+      "gated": false,
+      "note": "Host-tool asset: the mask decoder half of the MobileSAM pair; the nnny/onnx-mobile-sam export of the same name is decoder-only and cannot run alone."
+    },
+    {
+      "id": "mobilesam-encoder-vitt",
+      "title": "MobileSAM ViT-T encoder (ONNX, host CPU)",
+      "folder": "vision-models",
+      "file": "mobilesam.encoder.onnx",
+      "url": "https://huggingface.co/PulpCut/mobilesam-onnx/resolve/main/mobilesam.encoder.onnx",
+      "license": "Apache-2.0",
+      "size_bytes": 28195125,
+      "sha256": "4125037c5e24d6ea58e201b20e8d8fbbbd1135c0b881e34a8074b8c4f07e6918",
+      "used_by": [],
+      "gated": false,
+      "note": "Host-tool asset: loaded by studio/tools/vision/sam_cli.py in the vision venv, not by ComfyUI. Workflows reference it as host:studio/tools/vision-models."
+    },
+    {
+      "id": "realesrgan-x4-face-tuned",
+      "title": "RealESRGAN x4 — sberbank face-tuned net (not x4plus)",
+      "folder": "upscale_models",
+      "file": "RealESRGAN_x4.pth",
+      "url": "",
+      "license": "BSD-3-Clause",
+      "size_bytes": 67040989,
+      "sha256": "aa00f09ad753d88576b21ed977e97d634976377031b178acc3b5b238df463400",
+      "used_by": [
+        "img-detail-2x",
+        "img-detail-3x",
+        "txt2img-upscale",
+        "upscale-realesrgan"
+      ],
+      "gated": false,
+      "note": "Same byte length as x4plus but a different network: this one is tuned for faces."
+    },
+    {
+      "id": "realesrgan-x4plus",
+      "title": "Real-ESRGAN x4plus (general-purpose 4x upscaler)",
+      "folder": "upscale_models",
+      "file": "real_esrgan_x4plus.pth",
+      "url": "https://huggingface.co/uwg/upscaler/resolve/main/Face_Restore/FaceFusion/real_esrgan_x4plus.pth",
+      "license": "BSD-3-Clause",
+      "size_bytes": 67040989,
+      "sha256": "4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1",
+      "used_by": [
+        "img-detail-2x-x4plus",
+        "img-detail-3x-x4plus",
+        "upscale-x4plus"
+      ],
+      "gated": false
+    },
+    {
+      "id": "sd-xl-turbo-1.0-fp16",
+      "title": "SDXL Turbo 1.0 fp16 (one to four step SDXL)",
+      "folder": "checkpoints",
+      "file": "sd_xl_turbo_1.0_fp16.safetensors",
+      "url": "https://huggingface.co/stabilityai/sdxl-turbo/resolve/main/sd_xl_turbo_1.0_fp16.safetensors",
+      "license": "Stability AI Non-Commercial Research Community License",
+      "size_bytes": 6938081905,
+      "sha256": "e869ac7d6942cb327d68d5ed83a40447aadf20e0c3358d98b2cc9e270db0da26",
+      "used_by": [
+        "cn-canny-sdxl",
+        "cn-depth-sdxl",
+        "cn-dual-canny-depth",
+        "cn-triple-lock",
+        "format-cinema",
+        "format-landscape",
+        "format-portrait",
+        "format-square",
+        "format-story",
+        "img-batch-4",
+        "img-hires-fix",
+        "img2img-soft",
+        "img2img-strong",
+        "inpaint-remove",
+        "inpaint-turbo",
+        "outpaint-turbo",
+        "sam-bg-replace",
+        "sam-object-remove",
+        "style-3d",
+        "style-cinematic",
+        "style-photo",
+        "style-product",
+        "style-sketch",
+        "txt2img-turbo"
+      ],
+      "gated": false
+    },
+    {
+      "id": "umt5-xxl-fp8-e4m3fn-scaled",
+      "title": "UMT5-XXL fp8 e4m3fn scaled (WAN 2.2 text encoder)",
+      "folder": "text_encoders",
+      "file": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "url": "",
+      "license": "Apache-2.0",
+      "size_bytes": 6735906897,
+      "sha256": "c3355d30191f1f066b26d93fba017ae9809dce6c627dda5f6a66eaa651204f68",
+      "used_by": [
+        "video-i2v-wan22",
+        "video-t2v-wan22"
+      ],
+      "gated": false
+    },
+    {
+      "id": "wan2.2-ti2v-5b-fp16",
+      "title": "WAN 2.2 TI2V 5B fp16 (text+image to video)",
+      "folder": "diffusion_models",
+      "file": "wan2.2_ti2v_5B_fp16.safetensors",
+      "url": "",
+      "license": "Apache-2.0",
+      "size_bytes": 9999658848,
+      "sha256": "456f901338bd9eadbded3828b819109a9b68e8a525ca5cf8d0049a69fcfeca1e",
+      "used_by": [
+        "video-i2v-wan22",
+        "video-t2v-wan22"
+      ],
+      "gated": false
+    },
+    {
+      "id": "wan2.2-vae",
+      "title": "WAN 2.2 VAE",
+      "folder": "vae",
+      "file": "wan2.2_vae.safetensors",
+      "url": "",
+      "license": "Apache-2.0",
+      "size_bytes": 1409400960,
+      "sha256": "e40321bd36b9709991dae2530eb4ac303dd168276980d3e9bc4b6e2b75fed156",
+      "used_by": [
+        "video-i2v-wan22",
+        "video-t2v-wan22"
+      ],
+      "gated": false
+    },
+    {
+      "id": "whisper-large-v3-q5-0",
+      "title": "whisper.cpp ggml large-v3 q5_0 (CPU ASR)",
+      "folder": "whisper-models",
+      "file": "ggml-large-v3-q5_0.bin",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-q5_0.bin",
+      "license": "MIT",
+      "size_bytes": 1081140203,
+      "sha256": "d75795ecff3f83b5faa89d1900604ad8c780abd5739fae406de19f23ecd98ad1",
+      "used_by": [
+        "asr-large",
+        "asr-translate-en"
+      ],
+      "gated": false
+    }
+  ]
+}

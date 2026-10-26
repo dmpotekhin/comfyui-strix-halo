@@ -1,0 +1,40 @@
+{
+  "id": "vid-mux-subs",
+  "name": "Video — attach subtitles",
+  "category": "video-generation",
+  "description": "Adds the subtitle file as a soft track (mov_text) instead of burning it in: players can switch it off, and the video stream is copied untouched.",
+  "execution": "host",
+  "host_tool": "ffmpeg_mux_subs",
+  "output_kind": "video",
+  "timeout_s": 900,
+  "min_vram_gb": 0,
+  "tags": [
+    "host-tool",
+    "no-gpu",
+    "ffmpeg_mux_subs"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "video",
+      "label": "Video file (name in input/ or path in project)",
+      "type": "string",
+      "default": "output/studio/i2v_00002_.mp4",
+      "required": true
+    },
+    {
+      "key": "subtitles",
+      "label": "Subtitle file (.srt/.vtt)",
+      "type": "string",
+      "default": "output/studio/asr_tts_ru_RU_00001_00001_.srt",
+      "required": true
+    },
+    {
+      "key": "language",
+      "label": "Subtitle language tag",
+      "type": "string",
+      "default": "rus"
+    }
+  ],
+  "notes": "Pairs directly with the Whisper SRT export. Soft subtitles keep the picture bit-identical, which burning them in does not."
+}

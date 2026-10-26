@@ -1,0 +1,43 @@
+{
+  "id": "vid-resize-1080",
+  "name": "Video — scale to 1080p width",
+  "category": "video-generation",
+  "description": "Scales to 1920 px wide — the delivery size for YouTube.",
+  "execution": "host",
+  "host_tool": "ffmpeg_video_resize",
+  "output_kind": "video",
+  "timeout_s": 900,
+  "min_vram_gb": 0,
+  "tags": [
+    "host-tool",
+    "no-gpu",
+    "ffmpeg_video_resize"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "video",
+      "label": "Video file (name in input/ or path in project)",
+      "type": "string",
+      "default": "output/studio/i2v_00002_.mp4",
+      "required": true
+    },
+    {
+      "key": "width",
+      "label": "Width",
+      "type": "int",
+      "default": 1920,
+      "min": 64,
+      "max": 7680
+    },
+    {
+      "key": "crf",
+      "label": "x264 CRF (lower = better)",
+      "type": "int",
+      "default": 20,
+      "min": 0,
+      "max": 51
+    }
+  ],
+  "notes": "Height is forced to an even number with scale=-2: an odd height breaks yuv420p encoding on most players."
+}

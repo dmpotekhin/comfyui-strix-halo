@@ -1,0 +1,75 @@
+{
+  "id": "asr-translate-en",
+  "name": "Transcribe + translate to English",
+  "category": "audio-generation",
+  "description": "Transcribes speech in any language and writes an English transcript and subtitles in the same pass (whisper's own translation, no second model).",
+  "execution": "host",
+  "host_tool": "whisper_transcribe",
+  "output_kind": "text",
+  "timeout_s": 2400,
+  "tags": [
+    "asr",
+    "whisper",
+    "transcribe",
+    "large-v3-q5_0",
+    "translate"
+  ],
+  "models": [
+    {
+      "folder": "whisper-models",
+      "file": "ggml-large-v3-q5_0.bin",
+      "purpose": "whisper.cpp ggml large-v3 q5_0 (quantised, CPU inference)"
+    }
+  ],
+  "parameters": [
+    {
+      "key": "audio",
+      "label": "Audio file (absolute path inside the project)",
+      "type": "string",
+      "required": true,
+      "default": "output/studio/tts_ru_RU_00001_.wav"
+    },
+    {
+      "key": "model",
+      "label": "Whisper model",
+      "type": "choice",
+      "options": [
+        "small",
+        "large-v3-q5_0"
+      ],
+      "default": "large-v3-q5_0",
+      "help": "small: ~2.2x realtime, mis-hears Russian. large-v3-q5_0: ~0.4x realtime, gets the words right."
+    },
+    {
+      "key": "language",
+      "label": "Language",
+      "type": "choice",
+      "options": [
+        "auto",
+        "ru",
+        "en",
+        "de",
+        "fr",
+        "es",
+        "it",
+        "zh",
+        "ja"
+      ],
+      "default": "auto"
+    },
+    {
+      "key": "formats",
+      "label": "Output formats (comma separated)",
+      "type": "string",
+      "default": "srt,txt",
+      "required": true
+    },
+    {
+      "key": "translate",
+      "label": "Translate to English",
+      "type": "bool",
+      "default": true
+    }
+  ],
+  "notes": "whisper-cli on the host CPU, no VRAM. large-v3-q5_0 costs ~4x the wall time of small and ~1 GiB of disk, and is the difference between plausible-sounding nonsense and an accurate transcript for accents and non-English speech."
+}

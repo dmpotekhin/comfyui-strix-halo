@@ -1,0 +1,40 @@
+{
+  "id": "cutout-u2net",
+  "name": "Cutout — subject on transparent background (U²-Net)",
+  "category": "image-editing",
+  "description": "Cuts the main subject out of a photo and leaves a transparent background. U²-Net runs on the host CPU through ONNX Runtime, so no OpenCV and no custom nodes touch the ROCm container, and the alpha channel comes back lossless in a PNG. Ready for compositing, thumbnails or a ControlNet reference.",
+  "execution": "host",
+  "host_tool": "cutout",
+  "output_kind": "image",
+  "timeout_s": 300,
+  "min_vram_gb": 0,
+  "tags": [
+    "cutout",
+    "matting",
+    "background-removal",
+    "u2net",
+    "host-tool",
+    "no-gpu"
+  ],
+  "models": [
+    {
+      "folder": "host:studio/tools/vision-models",
+      "file": "u2net.onnx",
+      "purpose": "U²-Net salient-object matte, ONNX Runtime CPU"
+    }
+  ],
+  "notes": "Preprocessing mirrors rembg's reference U2netSession — squash-resize to 320x320, /255, ImageNet mean/std — and the matte is min-max normalised and resized back with LANCZOS, so edges stay soft instead of stair-stepped. Single subject only: U²-Net picks one salient object. The PNG is also copied into ComfyUI's input folder so it can be fed straight into a ControlNet or an image-to-image graph.",
+  "parameters": [
+    {
+      "key": "image",
+      "label": "Photo",
+      "type": "image",
+      "default": "ref_raccoon.png",
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      }
+    }
+  ]
+}

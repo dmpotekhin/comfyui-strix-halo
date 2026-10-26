@@ -1,0 +1,87 @@
+{
+  "id": "img-watermark-corner",
+  "name": "Watermark — corner stamp",
+  "category": "image-editing",
+  "description": "White label text with a soft shadow in a corner — readable on light and dark photos without an opaque box.",
+  "execution": "host",
+  "host_tool": "image_watermark",
+  "output_kind": "image",
+  "timeout_s": 900,
+  "min_vram_gb": 0,
+  "tags": [
+    "host-tool",
+    "no-gpu",
+    "image_watermark"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "image",
+      "label": "Photo",
+      "type": "image",
+      "default": "ref_raccoon.png",
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      }
+    },
+    {
+      "key": "text",
+      "label": "Watermark text",
+      "type": "string",
+      "default": "Strix Halo Studio",
+      "required": true
+    },
+    {
+      "key": "position",
+      "label": "Position",
+      "type": "choice",
+      "options": [
+        "bottom-right",
+        "bottom-left",
+        "top-right",
+        "top-left",
+        "center"
+      ],
+      "default": "bottom-right"
+    },
+    {
+      "key": "opacity",
+      "label": "Opacity",
+      "type": "float",
+      "default": 0.65,
+      "min": 0.05,
+      "max": 1,
+      "step": 0.05
+    },
+    {
+      "key": "font_size",
+      "label": "Font size (0 = auto)",
+      "type": "int",
+      "default": 0,
+      "min": 0,
+      "max": 512
+    },
+    {
+      "key": "margin",
+      "label": "Margin (px)",
+      "type": "int",
+      "default": 24,
+      "min": 0,
+      "max": 512
+    },
+    {
+      "key": "format",
+      "label": "Output format",
+      "type": "choice",
+      "options": [
+        "png",
+        "jpg",
+        "webp"
+      ],
+      "default": "png"
+    }
+  ],
+  "notes": "Auto font size is 4% of the width, which stays legible from 320 px to 4K."
+}

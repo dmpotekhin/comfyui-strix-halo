@@ -1,0 +1,56 @@
+{
+  "id": "tts-ru-slow",
+  "name": "Speech — Russian, slow narration",
+  "category": "audio-generation",
+  "description": "Russian narration at 1.2× length — the slow read used for audiobook and tutorial voice-over.",
+  "execution": "host",
+  "host_tool": "piper_tts",
+  "output_kind": "audio",
+  "timeout_s": 180,
+  "min_vram_gb": 0,
+  "tags": [
+    "tts",
+    "piper",
+    "speech",
+    "ru",
+    "no-gpu",
+    "no-download"
+  ],
+  "models": [
+    {
+      "folder": "host:studio/assets/voices",
+      "file": "ru_RU-irina-medium.onnx",
+      "purpose": "Piper voice model, ONNX Runtime CPU"
+    }
+  ],
+  "parameters": [
+    {
+      "key": "text",
+      "label": "Text to speak",
+      "type": "text",
+      "multiline": true,
+      "required": true,
+      "default": "Привет! Это локальный синтез речи. Всё считается на твоём ноутбуке, без интернета."
+    },
+    {
+      "key": "voice",
+      "label": "Voice",
+      "type": "choice",
+      "options": [
+        "ru_RU-irina-medium"
+      ],
+      "default": "ru_RU-irina-medium",
+      "required": true
+    },
+    {
+      "key": "length_scale",
+      "label": "Length scale (higher = slower)",
+      "type": "float",
+      "default": 1.2,
+      "min": 0.5,
+      "max": 2.0,
+      "step": 0.05
+    }
+  ],
+  "notes": "Pitch is applied after synthesis: the WAV is resampled to move the spectrum, then atempo restores the original duration, so only the voice moves and the timing does not."
+}

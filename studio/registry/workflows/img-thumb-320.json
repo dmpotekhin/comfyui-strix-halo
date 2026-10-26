@@ -1,0 +1,47 @@
+{
+  "id": "img-thumb-320",
+  "name": "Thumbnail — 320 px",
+  "category": "image-editing",
+  "description": "320 px preview that fits inside a square box, aspect preserved: the gallery tile size.",
+  "execution": "host",
+  "host_tool": "image_thumbnail",
+  "output_kind": "image",
+  "timeout_s": 900,
+  "min_vram_gb": 0,
+  "tags": [
+    "host-tool",
+    "no-gpu",
+    "image_thumbnail"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "image",
+      "label": "Photo",
+      "type": "image",
+      "default": "ref_raccoon.png",
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      }
+    },
+    {
+      "key": "size",
+      "label": "Box size",
+      "type": "int",
+      "default": 320,
+      "min": 16,
+      "max": 4096
+    },
+    {
+      "key": "quality",
+      "label": "JPEG quality",
+      "type": "int",
+      "default": 85,
+      "min": 1,
+      "max": 100
+    }
+  ],
+  "notes": "Resampling is Lanczos and the EXIF orientation is applied first, so a phone portrait does not come out sideways."
+}

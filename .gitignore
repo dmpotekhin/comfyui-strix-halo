@@ -1,0 +1,70 @@
+# ── Model weights ────────────────────────────────────────────────────────────────────────────────
+# Multi-gigabyte, re-downloadable, and meaningless in a diff. `studio/registry/models_catalog.json`
+# is the source of truth for what should be here and where it came from, so the bytes stay out.
+models/
+*.safetensors
+*.onnx
+*.pth
+*.bin
+*.gguf
+*.ckpt
+*.sft
+
+# ── Generated artefacts ──────────────────────────────────────────────────────────────────────────
+# Every run rewrites these; committing them turns the repository into a log.
+output/
+input/
+studio/cache/
+logs/
+*.log
+# Storybook experiments: 52 MB of rendered clips and the frame stills behind them. Re-renderable
+# from the workflows, so they stay out; `diagnostics/` is the same story for OCR probes.
+clips/
+frames/
+diagnostics/
+
+# ── Vendored third-party trees ───────────────────────────────────────────────────────────────────
+# Each has its own upstream and its own .git: piper is a downloaded release bundle (~30 MB), the
+# custom nodes are `git clone`s. Neither is ours to version and both are restored by docs/setup steps.
+custom_nodes/
+studio/tools/piper/piper/
+
+# ── Environments and vendored builds ─────────────────────────────────────────────────────────────
+.venv/
+venv/
+studio/.venv/
+studio/tools/vision-venv/
+studio/tools/whisper-src/
+node_modules/
+
+# ── Python / test noise ──────────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/
+
+# ── Local state and secrets ──────────────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+# Runtime database: the studio recreates it on first start; the -shm/-wal siblings are transient.
+studio/data/
+*.pem
+*.key
+.DS_Store
+desktop.ini
+
+# ── Editor / OS ──────────────────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*~

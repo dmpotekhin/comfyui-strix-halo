@@ -1,0 +1,65 @@
+{
+  "id": "sam-mask",
+  "name": "Mask — by point (MobileSAM)",
+  "category": "image-editing",
+  "description": "Writes the segmentation mask itself as a white-on-black PNG — the input the inpaint workflows want when you would rather edit the mask by hand first.",
+  "execution": "host",
+  "host_tool": "sam_segment",
+  "output_kind": "image",
+  "timeout_s": 300,
+  "tags": [
+    "segmentation",
+    "sam",
+    "mobilesam",
+    "mask",
+    "cpu",
+    "mask"
+  ],
+  "models": [
+    {
+      "folder": "host:studio/tools/vision-models",
+      "file": "mobilesam.encoder.onnx",
+      "purpose": "MobileSAM ViT-T encoder (ONNX, CPU)"
+    },
+    {
+      "folder": "host:studio/tools/vision-models",
+      "file": "mobilesam.decoder.onnx",
+      "purpose": "MobileSAM mask decoder (ONNX, CPU)"
+    }
+  ],
+  "parameters": [
+    {
+      "key": "image",
+      "label": "Photo",
+      "type": "image",
+      "default": "ref_raccoon.png",
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      }
+    },
+    {
+      "key": "points",
+      "label": "Points to the object (x,y;x,y — empty means centre)",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "key": "labels",
+      "label": "Labels (1=object, 0=background; empty = all 1)",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "key": "mode",
+      "label": "Output",
+      "type": "choice",
+      "options": [
+        "mask"
+      ],
+      "default": "mask"
+    }
+  ],
+  "notes": "MobileSAM on ONNX Runtime, CPU only, ~1.5 s for a 1024² photo. The mask is the thing under the point you give it — unlike U²-Net's cutout, which always answers 'the most salient object'."
+}

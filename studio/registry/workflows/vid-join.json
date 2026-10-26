@@ -1,0 +1,28 @@
+{
+  "id": "vid-join",
+  "name": "Video — join clips",
+  "category": "video-generation",
+  "description": "Joins two to eight clips into one film, scaling and padding each to the first clip's frame size and normalising to 30 fps.",
+  "execution": "host",
+  "host_tool": "ffmpeg_video_concat",
+  "output_kind": "video",
+  "timeout_s": 900,
+  "min_vram_gb": 0,
+  "tags": [
+    "host-tool",
+    "no-gpu",
+    "ffmpeg_video_concat"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "files",
+      "label": "Clips, one per line",
+      "type": "text",
+      "multiline": true,
+      "required": true,
+      "default": "output/studio/i2v_00002_.mp4\noutput/studio/i2v_00003_.mp4"
+    }
+  ],
+  "notes": "Mixed sizes and frame rates are the usual reason a naive concat produces a broken file; here every input is normalised before concatenation."
+}

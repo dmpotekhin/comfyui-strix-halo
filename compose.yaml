@@ -1,0 +1,46 @@
+# comfyui-strix-halo — ComfyUI на AMD Strix Halo (gfx1151)
+#
+# Источник образа: https://github.com/IgnatBeresnev/comfyui-gfx1151
+#   внутри: ROCm 7.2 + PyTorch 2.9.1 + Python 3.12 + ComfyUI (baked-in) + flash-attention (Triton backend)
+#   проверено по registry API: docker.io/ignatberesnev/comfyui-gfx1151 теги = v0.1, v0.2 (тега latest НЕТ)
+#   ghcr.io/ignatberesnev/comfyui-gfx1151 -> 403 DENIED (образа там нет)
+#
+# Сознательно НЕ используется:
+#   privileged: true, network_mode: host, cap_add SYS_PTRACE, security_opt seccomp:unconfined,
+#   монтирование $HOME, публикация порта в LAN.
+
+services:
+  comfyui:
+    image: ${COMFY_IMAGE:-ignatberesnev/comfyui-gfx1151:v0.2}
+    container_name: ${COMFY_NAME:-comfyui-strix-halo}
+
+    # только localhost: снаружи ноутбука сервис недоступен
+    ports:
+      - "127.0.0.1:${COMFY_PORT:-8188}:8188"
+
+    # /dev/shm: у хоста 30 GiB RAM (96 GiB отдано iGPU), апстрим предлагает 8G — берём 4G
+    shm_size: ${COMFY_SHM:-4g}
+
+    environment:
+      - TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1
+
+    # Постоянные каталоги. Код ComfyUI берём из образа (не монтируем /opt/ComfyUI целиком),
+    # чтобы версия кода была воспроизводимой; данные и workflow — на хосте.
+    volumes:
+      - ./models:/opt/ComfyUI/models
+      - ./input:/opt/ComfyUI/input
+      - ./output:/opt/ComfyUI/output
+      - ./workflows:/opt/ComfyUI/user/default/workflows
+      # кастомные узлы (IP-Adapter) — иначе теряются при пересоздании контейнера
+      - ./custom_nodes:/opt/ComfyUI/custom_nodes
+
+    # GPU: KFD (compute) + DRM (render). GPU-runtime в Docker не нужен.
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render
+
+    restart: "no"
+    stop_grace_period: 30s

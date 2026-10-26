@@ -1,0 +1,379 @@
+{
+  "id": "video-i2v-wan22",
+  "name": "Image to Video — Wan 2.2 TI2V-5B",
+  "category": "video-generation",
+  "description": "Animates a still image with Wan 2.2 TI2V-5B. The image is centre-cropped to the target resolution and used as the first frame plus a CLIP-vision hint, so motion follows the prompt while composition follows the image.",
+  "output_kind": "video",
+  "timeout_s": 2400,
+  "min_vram_gb": 24,
+  "tags": [
+    "video",
+    "i2v",
+    "wan",
+    "animation",
+    "mp4"
+  ],
+  "models": [
+    {
+      "folder": "diffusion_models",
+      "file": "wan2.2_ti2v_5B_fp16.safetensors",
+      "purpose": "video diffusion model"
+    },
+    {
+      "folder": "text_encoders",
+      "file": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "purpose": "text encoder (T5)"
+    },
+    {
+      "folder": "vae",
+      "file": "wan2.2_vae.safetensors",
+      "purpose": "video VAE"
+    },
+    {
+      "folder": "clip_vision",
+      "file": "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors",
+      "purpose": "image conditioning encoder"
+    }
+  ],
+  "notes": "This graph is the one already proven on this machine (7 successful recordings). Frame count 49 at 24 fps is about 2 seconds; the model's useful range is roughly 17-121 frames, and longer clips cost time super-linearly. The start image is centre-cropped, so letterboxing is lost — stage the input at the target aspect ratio. Wan 2.2 is licensed Apache 2.0.",
+  "graph": {
+    "1": {
+      "class_type": "UNETLoader",
+      "inputs": {
+        "unet_name": "wan2.2_ti2v_5B_fp16.safetensors",
+        "weight_dtype": "default"
+      }
+    },
+    "2": {
+      "class_type": "CLIPLoader",
+      "inputs": {
+        "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+        "type": "wan"
+      }
+    },
+    "3": {
+      "class_type": "VAELoader",
+      "inputs": {
+        "vae_name": "wan2.2_vae.safetensors"
+      }
+    },
+    "4": {
+      "class_type": "CLIPVisionLoader",
+      "inputs": {
+        "clip_name": "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors"
+      }
+    },
+    "5": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "ref_white_pair.png"
+      }
+    },
+    "6": {
+      "class_type": "ImageScale",
+      "inputs": {
+        "image": [
+          "5",
+          0
+        ],
+        "upscale_method": "lanczos",
+        "width": 640,
+        "height": 640,
+        "crop": "center"
+      }
+    },
+    "7": {
+      "class_type": "CLIPVisionEncode",
+      "inputs": {
+        "clip_vision": [
+          "4",
+          0
+        ],
+        "image": [
+          "6",
+          0
+        ],
+        "crop": "none"
+      }
+    },
+    "8": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "clip": [
+          "2",
+          0
+        ],
+        "text": "two white kittens sit side by side on a wooden porch, their fur and red caps move in a light morning breeze, they blink and look around"
+      }
+    },
+    "9": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "clip": [
+          "2",
+          0
+        ],
+        "text": "static, freeze frame, blurry, worst quality, low quality, distorted, deformed, extra limbs, extra animals, text, watermark, subtitles, jitter, flicker"
+      }
+    },
+    "10": {
+      "class_type": "ModelSamplingSD3",
+      "inputs": {
+        "model": [
+          "1",
+          0
+        ],
+        "shift": 8.0
+      }
+    },
+    "11": {
+      "class_type": "WanImageToVideo",
+      "inputs": {
+        "positive": [
+          "8",
+          0
+        ],
+        "negative": [
+          "9",
+          0
+        ],
+        "vae": [
+          "3",
+          0
+        ],
+        "width": 640,
+        "height": 640,
+        "length": 49,
+        "batch_size": 1,
+        "start_image": [
+          "6",
+          0
+        ],
+        "clip_vision_output": [
+          "7",
+          0
+        ]
+      }
+    },
+    "12": {
+      "class_type": "KSampler",
+      "inputs": {
+        "model": [
+          "10",
+          0
+        ],
+        "seed": 777,
+        "steps": 30,
+        "cfg": 5.0,
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "positive": [
+          "11",
+          0
+        ],
+        "negative": [
+          "11",
+          1
+        ],
+        "latent_image": [
+          "11",
+          2
+        ],
+        "denoise": 1.0
+      }
+    },
+    "13": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "12",
+          0
+        ],
+        "vae": [
+          "3",
+          0
+        ]
+      }
+    },
+    "14": {
+      "class_type": "CreateVideo",
+      "inputs": {
+        "images": [
+          "13",
+          0
+        ],
+        "fps": 24.0
+      }
+    },
+    "15": {
+      "class_type": "SaveVideo",
+      "inputs": {
+        "video": [
+          "14",
+          0
+        ],
+        "filename_prefix": "studio/i2v",
+        "format": "mp4",
+        "codec": "h264"
+      }
+    }
+  },
+  "parameters": [
+    {
+      "key": "image",
+      "label": "Start image",
+      "type": "image",
+      "bind": {
+        "node": "5",
+        "input": "image"
+      },
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      },
+      "default": "ref_white_pair.png"
+    },
+    {
+      "key": "prompt",
+      "label": "Motion prompt",
+      "type": "text",
+      "bind": {
+        "node": "8",
+        "input": "text"
+      },
+      "required": true,
+      "multiline": true,
+      "default": "two white kittens sit side by side on a wooden porch, their fur and red caps move in a light morning breeze, they blink and look around",
+      "description": "Describe what moves and how. Static descriptions produce static video."
+    },
+    {
+      "key": "negative",
+      "label": "Negative prompt",
+      "type": "text",
+      "bind": {
+        "node": "9",
+        "input": "text"
+      },
+      "multiline": true,
+      "default": "static, freeze frame, blurry, worst quality, low quality, distorted, deformed, extra limbs, extra animals, text, watermark, subtitles, jitter, flicker"
+    },
+    {
+      "key": "width",
+      "label": "Width",
+      "type": "int",
+      "bind": {
+        "node": "6",
+        "input": "width"
+      },
+      "also_bind": [
+        {
+          "node": "11",
+          "input": "width"
+        }
+      ],
+      "default": 640,
+      "min": 256,
+      "max": 1024,
+      "step": 64,
+      "unit": "px"
+    },
+    {
+      "key": "height",
+      "label": "Height",
+      "type": "int",
+      "bind": {
+        "node": "6",
+        "input": "height"
+      },
+      "also_bind": [
+        {
+          "node": "11",
+          "input": "height"
+        }
+      ],
+      "default": 640,
+      "min": 256,
+      "max": 1024,
+      "step": 64,
+      "unit": "px"
+    },
+    {
+      "key": "length",
+      "label": "Frames",
+      "type": "int",
+      "bind": {
+        "node": "11",
+        "input": "length"
+      },
+      "default": 49,
+      "min": 17,
+      "max": 121,
+      "step": 4,
+      "description": "49 frames / 24 fps = ~2 s. Must be a multiple of 4 plus 1."
+    },
+    {
+      "key": "fps",
+      "label": "FPS",
+      "type": "float",
+      "bind": {
+        "node": "14",
+        "input": "fps"
+      },
+      "default": 24.0,
+      "min": 8.0,
+      "max": 30.0,
+      "step": 1.0
+    },
+    {
+      "key": "steps",
+      "label": "Steps",
+      "type": "int",
+      "bind": {
+        "node": "12",
+        "input": "steps"
+      },
+      "default": 30,
+      "min": 10,
+      "max": 50
+    },
+    {
+      "key": "cfg",
+      "label": "CFG",
+      "type": "float",
+      "bind": {
+        "node": "12",
+        "input": "cfg"
+      },
+      "default": 5.0,
+      "min": 1.0,
+      "max": 10.0,
+      "step": 0.5
+    },
+    {
+      "key": "shift",
+      "label": "Sampling shift",
+      "type": "float",
+      "bind": {
+        "node": "10",
+        "input": "shift"
+      },
+      "default": 8.0,
+      "min": 1.0,
+      "max": 20.0,
+      "step": 0.5,
+      "description": "Wan is tuned for 8.0. Lower favours motion, higher favours fidelity to the prompt."
+    },
+    {
+      "key": "seed",
+      "label": "Seed",
+      "type": "seed",
+      "bind": {
+        "node": "12",
+        "input": "seed"
+      },
+      "default": -1,
+      "seed_source": true
+    }
+  ]
+}

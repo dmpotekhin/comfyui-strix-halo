@@ -1,0 +1,208 @@
+{
+  "id": "format-square",
+  "name": "Format — square 1024×1024",
+  "category": "image-generation",
+  "description": "Format — square 1024×1024. Uses the files that are already installed — no download, no new nodes.",
+  "execution": "graph",
+  "graph": {
+    "1": {
+      "class_type": "CheckpointLoaderSimple",
+      "inputs": {
+        "ckpt_name": "sd_xl_turbo_1.0_fp16.safetensors"
+      }
+    },
+    "2": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "a friendly red fox sitting in tall autumn grass, golden hour light, 85mm lens, shallow depth of field, photographic",
+        "clip": [
+          "1",
+          1
+        ]
+      }
+    },
+    "3": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "blurry, low quality, watermark, text, deformed, extra fingers",
+        "clip": [
+          "1",
+          1
+        ]
+      }
+    },
+    "4": {
+      "class_type": "EmptyLatentImage",
+      "inputs": {
+        "width": 1024,
+        "height": 1024,
+        "batch_size": 1
+      }
+    },
+    "5": {
+      "class_type": "KSampler",
+      "inputs": {
+        "seed": 42,
+        "steps": 4,
+        "cfg": 1.0,
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "denoise": 1.0,
+        "model": [
+          "1",
+          0
+        ],
+        "positive": [
+          "2",
+          0
+        ],
+        "negative": [
+          "3",
+          0
+        ],
+        "latent_image": [
+          "4",
+          0
+        ]
+      }
+    },
+    "6": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "5",
+          0
+        ],
+        "vae": [
+          "1",
+          2
+        ]
+      }
+    },
+    "7": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "filename_prefix": "studio/format_square",
+        "images": [
+          "6",
+          0
+        ]
+      }
+    }
+  },
+  "output_kind": "image",
+  "timeout_s": 300,
+  "min_vram_gb": 8,
+  "tags": [
+    "format",
+    "square",
+    "sdxl-turbo",
+    "no-download"
+  ],
+  "models": [
+    {
+      "folder": "checkpoints",
+      "file": "sd_xl_turbo_1.0_fp16.safetensors",
+      "purpose": "SDXL-Turbo base model (4-step sampling)"
+    }
+  ],
+  "parameters": [
+    {
+      "key": "prompt",
+      "label": "Prompt",
+      "type": "text",
+      "multiline": true,
+      "default": "a friendly red fox sitting in tall autumn grass, golden hour light, 85mm lens, shallow depth of field, photographic",
+      "required": true,
+      "bind": {
+        "node": "2",
+        "input": "text"
+      }
+    },
+    {
+      "key": "negative",
+      "label": "Negative prompt",
+      "type": "text",
+      "multiline": true,
+      "default": "blurry, low quality, watermark, text, deformed, extra fingers",
+      "bind": {
+        "node": "3",
+        "input": "text"
+      }
+    },
+    {
+      "key": "width",
+      "label": "Width",
+      "type": "int",
+      "default": 1024,
+      "min": 256,
+      "max": 2048,
+      "step": 8,
+      "bind": {
+        "node": "4",
+        "input": "width"
+      }
+    },
+    {
+      "key": "height",
+      "label": "Height",
+      "type": "int",
+      "default": 1024,
+      "min": 256,
+      "max": 2048,
+      "step": 8,
+      "bind": {
+        "node": "4",
+        "input": "height"
+      }
+    },
+    {
+      "key": "steps",
+      "label": "Steps",
+      "type": "int",
+      "default": 4,
+      "min": 1,
+      "max": 60,
+      "bind": {
+        "node": "5",
+        "input": "steps"
+      }
+    },
+    {
+      "key": "cfg",
+      "label": "CFG scale",
+      "type": "float",
+      "default": 1.0,
+      "min": 0.0,
+      "max": 12.0,
+      "step": 0.1,
+      "bind": {
+        "node": "5",
+        "input": "cfg"
+      }
+    },
+    {
+      "key": "batch_size",
+      "label": "Images per run",
+      "type": "int",
+      "default": 1,
+      "min": 1,
+      "max": 8,
+      "bind": {
+        "node": "4",
+        "input": "batch_size"
+      }
+    },
+    {
+      "key": "seed",
+      "label": "Seed",
+      "type": "seed",
+      "default": 42,
+      "bind": {
+        "node": "5",
+        "input": "seed"
+      }
+    }
+  ],
+  "notes": "Fixed 1024×1024 canvas (square) for the usual delivery sizes; both dimensions are already multiples of 8, which SDXL requires."
+}

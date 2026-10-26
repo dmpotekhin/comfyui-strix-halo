@@ -1,0 +1,35 @@
+{
+  "id": "vid-rotate-180",
+  "name": "Video — rotate 180°",
+  "category": "video-generation",
+  "description": "Upside-down footage, fixed without re-shooting.",
+  "execution": "host",
+  "host_tool": "ffmpeg_video_rotate",
+  "output_kind": "video",
+  "timeout_s": 900,
+  "min_vram_gb": 0,
+  "tags": [
+    "host-tool",
+    "no-gpu",
+    "ffmpeg_video_rotate"
+  ],
+  "models": [],
+  "parameters": [
+    {
+      "key": "video",
+      "label": "Video file (name in input/ or path in project)",
+      "type": "string",
+      "default": "output/studio/i2v_00002_.mp4",
+      "required": true
+    },
+    {
+      "key": "degrees",
+      "label": "Degrees",
+      "type": "int",
+      "default": 180,
+      "min": -270,
+      "max": 270
+    }
+  ],
+  "notes": "Rotation is a transpose filter, so the frame is re-encoded; the audio stream is copied untouched."
+}
