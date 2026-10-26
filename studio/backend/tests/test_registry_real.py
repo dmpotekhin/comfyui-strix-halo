@@ -95,3 +95,32 @@ def test_documented_test_evidence_matches_claim():
         d = json.loads(f.read_text(encoding="utf-8"))
         if d.get("test_status") == "passed":
             assert d.get("test_evidence"), f"{f.name} claims passed without evidence"
+
+
+def test_inpaint_chains_invert_the_alpha_mask_where_it_matters():
+    """LoadImage reads MASK as 1 - alpha, so a cutout arrives with the SUBJECT masked out.
+
+    Object removal therefore needs an InvertMask between the image and VAEEncodeForInpaint, and
+    background replacement must not have one. This was a live defect: without the inversion
+    `sam-object-remove` repainted the background and left the object untouched.
+    """
+    defs = {}
+    for f in _files():
+        d = json.loads(f.read_text(encoding="utf-8"))
+        defs[d.get("id")] = d
+
+    for wf_id, expects_inversion in (("sam-object-remove", True), ("sam-bg-replace", False)):
+        d = defs[wf_id]
+        graph = d["graph"]
+        encoders = [n for n in graph.values() if n["class_type"] == "VAEEncodeForInpaint"]
+        assert len(encoders) == 1, f"{wf_id}: expected one inpaint encoder"
+        mask_link = encoders[0]["inputs"]["mask"]
+        mask_node = graph[mask_link[0]]
+        if expects_inversion:
+            assert mask_node["class_type"] == "InvertMask", \
+                f"{wf_id}: mask must go through InvertMask, got {mask_node['class_type']}"
+            assert mask_node["inputs"]["mask"][0] == "4", \
+                f"{wf_id}: InvertMask must read the LoadImage mask"
+        else:
+            assert mask_node["class_type"] == "LoadImage", \
+                f"{wf_id}: background replacement must use the raw alpha mask"
