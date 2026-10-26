@@ -46,10 +46,13 @@ def p_text(key: str, label: str, default: str, node: str, *, multiline: bool = T
             "bind": {"node": node, "input": "text"}}
 
 
-def p_int(key: str, label: str, default: int, lo: int, hi: int, node: str,
+def p_int(key: str, label: str, default: int, lo: int, hi: int, node: str | None = None,
           input_name: str | None = None) -> dict:
-    return {"key": key, "label": label, "type": "int", "default": default, "min": lo, "max": hi,
-            "bind": {"node": node, "input": input_name or key}}
+    """Host-tool parameters carry no bind: `node=None` means "the host tool consumes this key"."""
+    param = {"key": key, "label": label, "type": "int", "default": default, "min": lo, "max": hi}
+    if node is not None:
+        param["bind"] = {"node": node, "input": input_name or key}
+    return param
 
 
 def p_float(key: str, label: str, default: float, lo: float, hi: float, node: str,
@@ -307,8 +310,8 @@ def build() -> list[dict]:
              "default": "input/_s5_v25.mp4"},
             {"key": "subtitles", "label": "Subtitle file (.srt/.vtt/.ass)", "type": "string",
              "required": True, "default": "output/studio/asr_tts_ru_RU_00001_00002_.srt"},
-            p_int("font_size", "Font size", 22, 8, 72, "host"),
-            p_int("crf", "x264 quality (lower = better)", 20, 14, 30, "host"),
+            p_int("font_size", "Font size", 22, 8, 72),
+            p_int("crf", "x264 quality (lower = better)", 20, 14, 30),
         ],
         "notes": "Re-encodes the picture, so it is slower and lossier than ffmpeg_mux_subs. "
                  "Feed it the .srt that asr-large or asr-transcribe writes into output/studio.",
@@ -328,7 +331,7 @@ def build() -> list[dict]:
         "sam-bg-blur", "Background blur — by point (MobileSAM)",
         "Keeps the prompted object sharp and blurs everything else (portrait-style background "
         "separation) with a soft mask edge so it does not look pasted on.",
-        "blur", extra=[p_int("blur", "Background blur radius (px)", 24, 0, 80, "host")],
+        "blur", extra=[p_int("blur", "Background blur radius (px)", 24, 0, 80)],
         tags=["background", "portrait", "blur"]))
     defs.append(sam_host(
         "sam-overlay", "Mask preview — by point (MobileSAM)",

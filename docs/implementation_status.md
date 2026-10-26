@@ -1,7 +1,7 @@
-# Implementation status — after Stage 5 (media expansion to 104 workflows)
+# Implementation status — after Stage S (116 workflows, MobileSAM + x4plus + Whisper large)
 
-Date: 2026-10-27. Stage 5 detail is in `docs/stage5_status.md`; the pending model purchase is in
-`docs/proposal_stage_s.md` (nothing downloaded). Full Stage R detail, including every measurement
+Date: 2026-10-28. Stage S detail is in `docs/stage_s_status.md`; the 45-workflow proposal it was cut
+down from is `docs/stage_s_proposal.md`. Stage 5 detail is in `docs/stage5_status.md`. Full Stage R detail, including every measurement
 behind the numbers below, is in `docs/stage_r_status.md`. Every "verified" line below was produced by running a command on this machine in this
 session. Estimates are marked `[ESTIMATE]`.
 
@@ -12,10 +12,13 @@ Read this together with `docs/stage5_status.md`, `docs/proposal_stage_s.md`, `do
 
 | Item | Evidence |
 |---|---|
-| Test suite | `pytest backend/tests -q` → **161 passed, 0 failed**, 85 warnings in 6.31 s |
+| Test suite | `pytest backend/tests -q` → **177 passed, 0 failed**, 85 warnings in 11.92 s |
 | Service | `./studio/start.sh` → `http://127.0.0.1:8000`, `/api/health` → `comfy_connected: true` |
 | Engine | ComfyUI **0.15.0**, torch **2.9.1+rocm7.2.0**, device `cuda:0 AMD Radeon Graphics`, 675 node classes |
-| Registry | **104 workflows** served (103 `ready_to_test`, 1 `available`): 37 graph, 65 host, 2 chain — all dependencies resolve, `104 / 104 runnable` in the UI |
+| Registry | **116 workflows** served: 40 graph, 72 host, 4 chain — all dependencies resolve |
+| Stage S live | 12 new workflows run end to end → **12/12 verified output**; `sam-object-remove` 7.2 s, `asr-large` 11.7 s on 2.3 s of speech, `upscale-x4plus` 41.0 s first call then 1.7 s |
+| Catalog | **15 model records**, every one with a complete sha256; `used_by` derived from the registry by `tools/catalog_usedby.py`; drift enforced by `tests/test_model_drift.py` |
+| WAN 2.2 t2v | executed for real: **1610.6 s** (26:51) for 49 frames / 30 steps → `output/studio/t2v_00001_.mp4`, 1,736,895 B, **1280×1280**, 24 fps, 2.04 s |
 | Host tools | **31** registered, every one used by at least one workflow; 24 of them added in Stage 5 |
 | Stage 5 live sweep | 29 workflows run end to end → **29/29 verified output, 0 failures**, 151.2 s total, median 0.8 s, max 52.4 s |
 | Upscale line | RealESRGAN (already installed, 0 B downloaded): `img-detail-2x` 1024²→2048² 4,725,351 B, `img-detail-3x` 1024²→3072² 9,042,988 B |
@@ -154,18 +157,22 @@ host binaries precisely to avoid it.
 3. **`run links: 0`** — library cards do not link back to outputs they produced.
 4. One stale DB row `14b4e04c…` says `failed / "job vanished"` for a video that completed (pre-fix
    watcher); history deliberately not rewritten.
-5. **No git repository** — nothing is committed; all work exists in the working tree only.
-6. `video-t2v-wan22` has never been executed (Wan 5B measured ~48 s/step — expensive to try blindly).
+5. **Fixed** — the repository is under git since `dba1b0e` (204 files, 1.6 MB; weights, outputs and
+   venvs are ignored with reasons in `.gitignore`).
+6. **Fixed for t2v** — `video-t2v-wan22` ran end to end: 1610.6 s, output 1,736,895 B. What that
+   exposed: the graph asks `WanImageToVideo` for 640×640 and the decoded file is **1280×1280**, i.e.
+   the TI2V 5B path doubles the requested size. The params are therefore not the output size, and a
+   "640×640 clip" costs four times the pixels (and ~27 minutes). `video-i2v-wan22` is the same shape.
 7. Upload path still never exercised with a real browser file end-to-end; settings persistence unit-tested only.
-8. whisper small misspells on synthetic speech (синтеза → синтиза); a larger ggml model fixes it at a
-   speed cost. Documented in the workflow notes rather than hidden.
+8. **Superseded** — whisper `large-v3-q5_0` is installed and `asr-large` transcribes Russian correctly;
+   `whisper-small` remains the fast option for rough drafts.
 9. `controlnet_aux` preprocessors are still not installed. Depth and cutout no longer need them (host
    ONNX tools do the job), but lineart/pose/normal still cannot preprocess a raw photo.
 10. **ACE-Step NaN cliff** — with Cyrillic lyrics and tags under ~115 characters the sampler produces an
-    all-NaN latent and a silent FLAC. Detected and explained, not fixed: it is model/build behaviour.
-11. Six installed models in `models/` have no catalog entry (CLIP-ViT-H, Wan 2.2 diffusion/VAE/text
-    encoder, IP-Adapter, RealESRGAN) because their exact source URL was never recorded at install time;
-    the downloader correctly refuses them rather than guessing.
+    all-NaN latent and a silent FLAC. Still model/build behaviour, but the studio now warns *before* the
+    run: fewer than four tags returns a preflight warning naming the failure mode.
+11. **Fixed** — 15 catalog records now, every hash complete, `used_by` derived from the registry, and
+    `tests/test_model_drift.py` fails the build if a workflow references an uncatalogued model.
 
 ## Blocked on a decision
 

@@ -3,7 +3,7 @@
 Generated from `studio/registry/workflows/*.json` by
 `studio/tools/gen_registry_docs.py`. Do not edit by hand — re-run the generator.
 
-**Total entries: 104.** Every id below exists as a JSON file in the registry.
+**Total entries: 116.** Every id below exists as a JSON file in the registry.
 
 `test_status` is written by whoever ran the graph; it is not inferred.
 
@@ -11,8 +11,10 @@ Generated from `studio/registry/workflows/*.json` by
 |---|---|---|---|---|---|---|---|---|
 | `asr-all-formats` | Transcript — txt + SRT + VTT + JSON at once | audio | text | ready_to_test | untested | 3 | `ggml-small.bin` | — |
 | `asr-json` | Transcript — JSON with word timings | audio | text | ready_to_test | untested | 3 | `ggml-small.bin` | — |
+| `asr-large` | Transcribe — large-v3 (accurate) | audio | text | ready_to_test | untested | 4 | `ggml-large-v3-q5_0.bin` | — |
 | `asr-srt` | Subtitles — SRT from audio | audio | text | ready_to_test | untested | 3 | `ggml-small.bin` | — |
 | `asr-transcribe` | Transcribe speech — whisper.cpp | audio | text | ready_to_test | untested | 2 | — | — |
+| `asr-translate-en` | Transcribe + translate to English | audio | text | ready_to_test | untested | 5 | `ggml-large-v3-q5_0.bin` | — |
 | `asr-vtt` | Subtitles — WebVTT from audio | audio | text | ready_to_test | untested | 3 | `ggml-small.bin` | — |
 | `audio-fade` | Fade — in and out | audio | audio | ready_to_test | untested | 3 | — | — |
 | `audio-flac` | Convert — FLAC (lossless) | audio | audio | ready_to_test | untested | 3 | — | — |
@@ -37,10 +39,13 @@ Generated from `studio/registry/workflows/*.json` by
 | `character-ipadapter` | Consistent character — IP-Adapter reference | characters | image | ready_to_test | untested | 11 | `animagine-xl-4.0.safetensors`, `ip-adapter-plus_sdxl_vit-h.safetensors`, `CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors` | — |
 | `image-resize` | Smart resize / prepare for upload | enhancement | image | ready_to_test | untested | 3 | — | — |
 | `img-detail-2x` | Upscale 2× with recovered detail — RealESRGAN | enhancement | image | ready_to_test | untested | 2 | `RealESRGAN_x4.pth` | — |
+| `img-detail-2x-x4plus` | Detail upscale — 2x (x4plus) | enhancement | image | ready_to_test | untested | 1 | `real_esrgan_x4plus.pth` | — |
 | `img-detail-3x` | Upscale 3× with recovered detail — RealESRGAN | enhancement | image | ready_to_test | untested | 2 | `RealESRGAN_x4.pth` | — |
+| `img-detail-3x-x4plus` | Detail upscale — 3x (x4plus) | enhancement | image | ready_to_test | untested | 1 | `real_esrgan_x4plus.pth` | — |
 | `img-downscale-50` | Image — halve the size | enhancement | image | ready_to_test | untested | 2 | — | — |
 | `img-upscale-2x` | Image — enlarge 2× (lanczos) | enhancement | image | ready_to_test | untested | 3 | — | — |
 | `upscale-realesrgan` | Upscale image 4x — RealESRGAN | enhancement | image | ready_to_test | untested | 1 | `RealESRGAN_x4.pth` | — |
+| `upscale-x4plus` | Upscale — Real-ESRGAN x4plus | enhancement | image | ready_to_test | untested | 1 | `real_esrgan_x4plus.pth` | — |
 | `cutout-u2net` | Cutout — subject on transparent background (U²-Net) | image-editing | image | ready_to_test | untested | 1 | `u2net.onnx` | — |
 | `img-convert-jpg` | Convert — to JPEG | image-editing | image | ready_to_test | untested | 4 | — | — |
 | `img-convert-png` | Convert — to PNG (lossless) | image-editing | image | ready_to_test | untested | 4 | — | — |
@@ -66,6 +71,12 @@ Generated from `studio/registry/workflows/*.json` by
 | `inpaint-remove` | Inpaint — remove an object | image-editing | image | ready_to_test | untested | 7 | `sd_xl_turbo_1.0_fp16.safetensors` | requires an alpha mask. —. |
 | `inpaint-turbo` | Inpaint — replace part of an image (mask) | image-editing | image | available | passed (2026-10-26) | 7 | `sd_xl_turbo_1.0_fp16.safetensors` | requires an alpha mask. Job completed in 5.1 s on 2026-10-26 producing inpaint_00002_.png (512x512, 444 KB). Verified visually: the masked region (100,140)-(220,260) was regenerated wh. |
 | `outpaint-turbo` | Outpaint — extend the frame | image-editing | image | ready_to_test | untested | 9 | `sd_xl_turbo_1.0_fp16.safetensors` | — |
+| `sam-bg-blur` | Background blur — by point (MobileSAM) | image-editing | image | ready_to_test | untested | 5 | `mobilesam.encoder.onnx`, `mobilesam.decoder.onnx` | — |
+| `sam-bg-replace` | Replace background — by point (MobileSAM + SDXL-Turbo) | image-editing | image | ready_to_test | untested | 10 | `mobilesam.encoder.onnx`, `mobilesam.decoder.onnx`, `sd_xl_turbo_1.0_fp16.safetensors` | — |
+| `sam-cutout` | Cutout — by point (MobileSAM) | image-editing | image | ready_to_test | untested | 4 | `mobilesam.encoder.onnx`, `mobilesam.decoder.onnx` | — |
+| `sam-mask` | Mask — by point (MobileSAM) | image-editing | image | ready_to_test | untested | 4 | `mobilesam.encoder.onnx`, `mobilesam.decoder.onnx` | — |
+| `sam-object-remove` | Remove an object — by point (MobileSAM + SDXL-Turbo) | image-editing | image | ready_to_test | untested | 10 | `mobilesam.encoder.onnx`, `mobilesam.decoder.onnx`, `sd_xl_turbo_1.0_fp16.safetensors` | — |
+| `sam-overlay` | Mask preview — by point (MobileSAM) | image-editing | image | ready_to_test | untested | 4 | `mobilesam.encoder.onnx`, `mobilesam.decoder.onnx` | — |
 | `cn-canny-sdxl` | Edge-guided generation — SDXL Canny ControlNet | image-generation | image | ready_to_test | untested | 9 | `sd_xl_turbo_1.0_fp16.safetensors`, `controlnet-canny-sdxl-1.0.safetensors` | — |
 | `cn-depth-sdxl` | Depth-guided generation — host depth map → SDXL Depth ControlNet | image-generation | image | ready_to_test | untested | 7 | `sd_xl_turbo_1.0_fp16.safetensors`, `controlnet-depth-sdxl-1.0.safetensors`, `depth-anything-v2-small.onnx` | — |
 | `cn-dual-canny-depth` | ControlNet — canny + depth together | image-generation | image | ready_to_test | untested | 8 | `sd_xl_turbo_1.0_fp16.safetensors`, `controlnet-canny-sdxl-1.0.safetensors`, `controlnet-depth-sdxl-1.0.safetensors`, `depth-anything-v2-small.onnx` | — |
@@ -92,6 +103,7 @@ Generated from `studio/registry/workflows/*.json` by
 | `vid-aspect-4x5-crop` | Video — 4:5 portrait crop | video | video | ready_to_test | untested | 3 | — | — |
 | `vid-aspect-9x16-crop` | Video — 9:16 vertical crop | video | video | ready_to_test | untested | 3 | — | — |
 | `vid-aspect-9x16-pad` | Video — 9:16 vertical with bars | video | video | ready_to_test | untested | 3 | — | — |
+| `vid-burn-subs` | Video — burn subtitles into the picture | video | video | ready_to_test | untested | 4 | — | — |
 | `vid-compress-tiny` | Video — compress hard (854 px) | video | video | ready_to_test | untested | 4 | — | — |
 | `vid-compress-web` | Video — compress for the web | video | video | ready_to_test | untested | 4 | — | — |
 | `vid-fps-24` | Video — convert to 24 fps | video | video | ready_to_test | untested | 2 | — | — |
@@ -116,9 +128,9 @@ Generated from `studio/registry/workflows/*.json` by
 
 ## Summary
 
-- entries: 104
+- entries: 116
 - with a recorded passing run: 1 (inpaint-turbo)
-- never executed here: 103
+- never executed here: 115
 
 ## Known limitations
 

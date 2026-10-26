@@ -18,15 +18,19 @@
 | 7 | `input/ref_*_w.png`, `models/ipadapter/`, `models/clip_vision/` | IP-Adapter работает |
 | 8 | `frames/scene_01..12.png`, `frames/contact_sheet.png`, `frames/manifest.md` | закрыт |
 
-## Инфраструктура студии (обновлено 27.10, ночь)
+## Инфраструктура студии (обновлено 28.10, ночь)
 
-Студия выросла до **104 workflow** (Stage 5: 37 graph / 65 host / 2 chain, 31 host-инструмент,
-`161 passed`, скачано 0 B) — см. `docs/stage5_status.md`. Для этапа 9 это значит: клипы теперь
-можно резать, склеивать, ускорять, менять fps/разрешение и монтировать субтитры без Python-скриптов.
+Студия выросла до **116 workflow** (40 graph / 72 host / 4 chain, `177 passed`) после Stage S:
+MobileSAM (ONNX на хосте), RealESRGAN x4plus, whisper large-v3 — установлено и прогнано живьём,
+см. `docs/stage_s_status.md`. ViT-B и Moondream2 не скачивались (не одобрены), поэтому из 45
+заявленных workflow доставлено 12.
 
-Stage S (SAM + Moondream2 + whisper large-v3 + RealESRGAN x4plus, 4.9112 GiB) **не скачан** —
-`docs/stage_s_proposal.md`, ждёт решения. План на 28.10 со всеми девятью шагами:
-`.hermes/plans/2026-10-28_090000-stage-s-approval-and-defects.md`.
+WAN 2.2 TI2V 5B **проверен на реальном прогоне**: t2v — 26 мин 51 с на 49 кадров / 30 шагов,
+результат `output/studio/t2v_00001_.mp4`, 1280×1280 (вдвое больше запрошенных в графе 640),
+1.74 MB, 24 fps. `video-i2v-wan22` гоняется следом.
+
+Репозиторий под git с коммита `dba1b0e`; веса, `output/`, `input/`, `clips/`, `frames/` и venv
+исключены — причины в `.gitignore`.
 
 ## Инфраструктура
 

@@ -36,11 +36,7 @@
       "type": "int",
       "default": 22,
       "min": 8,
-      "max": 72,
-      "bind": {
-        "node": "host",
-        "input": "font_size"
-      }
+      "max": 72
     },
     {
       "key": "crf",
@@ -48,11 +44,7 @@
       "type": "int",
       "default": 20,
       "min": 14,
-      "max": 30,
-      "bind": {
-        "node": "host",
-        "input": "crf"
-      }
+      "max": 30
     }
   ],
   "notes": "Re-encodes the picture, so it is slower and lossier than ffmpeg_mux_subs. Feed it the .srt that asr-large or asr-transcribe writes into output/studio."

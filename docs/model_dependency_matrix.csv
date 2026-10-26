@@ -1,7 +1,9 @@
 workflow_id,workflow_name,category,model_file,declared,referenced_in_graph,status
 asr-all-formats,Transcript — txt + SRT + VTT + JSON at once,audio,ggml-small.bin,yes,no,ready_to_test
 asr-json,Transcript — JSON with word timings,audio,ggml-small.bin,yes,no,ready_to_test
+asr-large,Transcribe — large-v3 (accurate),audio,ggml-large-v3-q5_0.bin,yes,no,ready_to_test
 asr-srt,Subtitles — SRT from audio,audio,ggml-small.bin,yes,no,ready_to_test
+asr-translate-en,Transcribe + translate to English,audio,ggml-large-v3-q5_0.bin,yes,no,ready_to_test
 asr-vtt,Subtitles — WebVTT from audio,audio,ggml-small.bin,yes,no,ready_to_test
 music-ace-step,Song with vocals — ACE-Step 3.5B,audio,ace_step_v1_3.5b.safetensors,yes,yes,ready_to_test
 tts-en-narrator,"Speech — English, documentary narrator",audio,en_US-lessac-medium.onnx,yes,no,ready_to_test
@@ -13,8 +15,11 @@ character-ipadapter,Consistent character — IP-Adapter reference,characters,CLI
 character-ipadapter,Consistent character — IP-Adapter reference,characters,animagine-xl-4.0.safetensors,yes,yes,ready_to_test
 character-ipadapter,Consistent character — IP-Adapter reference,characters,ip-adapter-plus_sdxl_vit-h.safetensors,yes,no,ready_to_test
 img-detail-2x,Upscale 2× with recovered detail — RealESRGAN,enhancement,RealESRGAN_x4.pth,yes,yes,ready_to_test
+img-detail-2x-x4plus,Detail upscale — 2x (x4plus),enhancement,real_esrgan_x4plus.pth,yes,yes,ready_to_test
 img-detail-3x,Upscale 3× with recovered detail — RealESRGAN,enhancement,RealESRGAN_x4.pth,yes,yes,ready_to_test
+img-detail-3x-x4plus,Detail upscale — 3x (x4plus),enhancement,real_esrgan_x4plus.pth,yes,yes,ready_to_test
 upscale-realesrgan,Upscale image 4x — RealESRGAN,enhancement,RealESRGAN_x4.pth,yes,yes,ready_to_test
+upscale-x4plus,Upscale — Real-ESRGAN x4plus,enhancement,real_esrgan_x4plus.pth,yes,yes,ready_to_test
 cutout-u2net,Cutout — subject on transparent background (U²-Net),image-editing,u2net.onnx,yes,no,ready_to_test
 img2img-anime,Restyle — photo to anime (Animagine),image-editing,animagine-xl-4.0.safetensors,yes,yes,ready_to_test
 img2img-restyle,Image to Image — restyle / variation,image-editing,animagine-xl-4.0.safetensors,yes,yes,ready_to_test
@@ -25,6 +30,20 @@ img2img-turbo,Fast Restyle — SDXL Turbo img2img,image-editing,sd_xl_turbo_1.0_
 inpaint-remove,Inpaint — remove an object,image-editing,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
 inpaint-turbo,Inpaint — replace part of an image (mask),image-editing,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,available
 outpaint-turbo,Outpaint — extend the frame,image-editing,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
+sam-bg-blur,Background blur — by point (MobileSAM),image-editing,mobilesam.decoder.onnx,yes,no,ready_to_test
+sam-bg-blur,Background blur — by point (MobileSAM),image-editing,mobilesam.encoder.onnx,yes,no,ready_to_test
+sam-bg-replace,Replace background — by point (MobileSAM + SDXL-Turbo),image-editing,mobilesam.decoder.onnx,yes,no,ready_to_test
+sam-bg-replace,Replace background — by point (MobileSAM + SDXL-Turbo),image-editing,mobilesam.encoder.onnx,yes,no,ready_to_test
+sam-bg-replace,Replace background — by point (MobileSAM + SDXL-Turbo),image-editing,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
+sam-cutout,Cutout — by point (MobileSAM),image-editing,mobilesam.decoder.onnx,yes,no,ready_to_test
+sam-cutout,Cutout — by point (MobileSAM),image-editing,mobilesam.encoder.onnx,yes,no,ready_to_test
+sam-mask,Mask — by point (MobileSAM),image-editing,mobilesam.decoder.onnx,yes,no,ready_to_test
+sam-mask,Mask — by point (MobileSAM),image-editing,mobilesam.encoder.onnx,yes,no,ready_to_test
+sam-object-remove,Remove an object — by point (MobileSAM + SDXL-Turbo),image-editing,mobilesam.decoder.onnx,yes,no,ready_to_test
+sam-object-remove,Remove an object — by point (MobileSAM + SDXL-Turbo),image-editing,mobilesam.encoder.onnx,yes,no,ready_to_test
+sam-object-remove,Remove an object — by point (MobileSAM + SDXL-Turbo),image-editing,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
+sam-overlay,Mask preview — by point (MobileSAM),image-editing,mobilesam.decoder.onnx,yes,no,ready_to_test
+sam-overlay,Mask preview — by point (MobileSAM),image-editing,mobilesam.encoder.onnx,yes,no,ready_to_test
 cn-canny-sdxl,Edge-guided generation — SDXL Canny ControlNet,image-generation,controlnet-canny-sdxl-1.0.safetensors,yes,yes,ready_to_test
 cn-canny-sdxl,Edge-guided generation — SDXL Canny ControlNet,image-generation,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
 cn-depth-sdxl,Depth-guided generation — host depth map → SDXL Depth ControlNet,image-generation,controlnet-depth-sdxl-1.0.safetensors,yes,yes,ready_to_test

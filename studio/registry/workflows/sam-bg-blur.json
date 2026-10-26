@@ -59,11 +59,7 @@
       "type": "int",
       "default": 24,
       "min": 0,
-      "max": 80,
-      "bind": {
-        "node": "host",
-        "input": "blur"
-      }
+      "max": 80
     },
     {
       "key": "mode",
