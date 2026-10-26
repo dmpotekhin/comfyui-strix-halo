@@ -124,3 +124,31 @@ def test_inpaint_chains_invert_the_alpha_mask_where_it_matters():
         else:
             assert mask_node["class_type"] == "LoadImage", \
                 f"{wf_id}: background replacement must use the raw alpha mask"
+
+
+def test_no_workflow_param_carries_a_key_the_schema_would_silently_drop():
+    """A misspelled param field is invisible: pydantic ignores extras, so the UI never sees it.
+
+    This caught `help` (used for human hints) being dropped on every workflow that had one, which
+    meant outpaint's "hard limit 512 px" explanation and the Wan sizing note never reached the form.
+    The field the form renders is `description`.
+    """
+    from app.schemas import Param
+
+    known = set(Param.model_fields)
+    offenders = []
+    for f in _files():
+        d = json.loads(f.read_text(encoding="utf-8"))
+        for prm in d.get("parameters") or []:
+            unknown = set(prm) - known
+            if unknown:
+                offenders.append(f"{d.get('id')}.{prm.get('key')}: {sorted(unknown)}")
+    assert not offenders, "unknown parameter fields (the API drops them without warning):\n" + "\n".join(offenders)
+
+
+def test_workflow_hints_use_the_field_the_form_renders():
+    """Every hint must live in `description`; `help` is never rendered by studio/frontend."""
+    for f in _files():
+        d = json.loads(f.read_text(encoding="utf-8"))
+        for prm in d.get("parameters") or []:
+            assert "help" not in prm, f"{d.get('id')}.{prm.get('key')} uses `help`, which is dropped"

@@ -276,7 +276,8 @@
       "min": 256,
       "max": 1024,
       "step": 64,
-      "unit": "px"
+      "unit": "px",
+      "description": "The file comes out at 2x this value: WAN 2.2 TI2V decodes at double the requested size (measured 320 -> 640x640 in 41 s, 640 -> 1280x1280 in ~27 min). 640 means a real 1280x1280 clip."
     },
     {
       "key": "height",
@@ -296,7 +297,8 @@
       "min": 256,
       "max": 1024,
       "step": 64,
-      "unit": "px"
+      "unit": "px",
+      "description": "The file comes out at 2x this value: WAN 2.2 TI2V decodes at double the requested size (measured 320 -> 640x640 in 41 s, 640 -> 1280x1280 in ~27 min). 640 means a real 1280x1280 clip."
     },
     {
       "key": "length",

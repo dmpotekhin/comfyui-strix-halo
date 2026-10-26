@@ -70,7 +70,9 @@ def p_choice(key: str, label: str, options: list[str], default: str, *, bind: di
              help_text: str | None = None) -> dict:
     p: dict = {"key": key, "label": label, "type": "choice", "options": options, "default": default}
     if help_text:
-        p["help"] = help_text
+        # `help` is not a field of schemas.Param — pydantic drops it and the form has no hint to
+        # render. `description` is what app.js prints as <div class="hint">.
+        p["description"] = help_text
     if bind:
         p["bind"] = bind
     return p

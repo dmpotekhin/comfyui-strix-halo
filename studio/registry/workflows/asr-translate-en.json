@@ -38,7 +38,7 @@
         "large-v3-q5_0"
       ],
       "default": "large-v3-q5_0",
-      "help": "small: ~2.2x realtime, mis-hears Russian. large-v3-q5_0: ~0.4x realtime, gets the words right."
+      "description": "small: ~2.2x realtime, mis-hears Russian. large-v3-q5_0: ~0.4x realtime, gets the words right."
     },
     {
       "key": "language",

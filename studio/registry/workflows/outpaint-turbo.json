@@ -187,7 +187,7 @@
       "max": 512,
       "step": 8,
       "unit": "px",
-      "help": "Hard limit 512 px per side: beyond that SDXL has no source detail to continue and repeats texture."
+      "description": "Hard limit 512 px per side: beyond that SDXL has no source detail to continue and repeats texture."
     },
     {
       "key": "right",
@@ -202,7 +202,7 @@
       "max": 512,
       "step": 8,
       "unit": "px",
-      "help": "Hard limit 512 px per side: beyond that SDXL has no source detail to continue and repeats texture."
+      "description": "Hard limit 512 px per side: beyond that SDXL has no source detail to continue and repeats texture."
     },
     {
       "key": "top",
@@ -217,7 +217,7 @@
       "max": 512,
       "step": 8,
       "unit": "px",
-      "help": "Hard limit 512 px per side: beyond that SDXL has no source detail to continue and repeats texture."
+      "description": "Hard limit 512 px per side: beyond that SDXL has no source detail to continue and repeats texture."
     },
     {
       "key": "bottom",
@@ -232,7 +232,7 @@
       "max": 512,
       "step": 8,
       "unit": "px",
-      "help": "Hard limit 512 px per side: beyond that SDXL has no source detail to continue and repeats texture."
+      "description": "Hard limit 512 px per side: beyond that SDXL has no source detail to continue and repeats texture."
     },
     {
       "key": "feathering",

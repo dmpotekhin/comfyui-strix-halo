@@ -174,11 +174,20 @@ host binaries precisely to avoid it.
     run: fewer than four tags returns a preflight warning naming the failure mode.
 11. **Fixed** — 15 catalog records now, every hash complete, `used_by` derived from the registry, and
     `tests/test_model_drift.py` fails the build if a workflow references an uncatalogued model.
-12. **WAN 2.2 size and cost are not what the parameters say.** Both Wan workflows ask the graph for
-    640×640 and produce 1280×1280 files, so the form's width/height are *half* of the real output, and
-    a "2-second" clip is 49 frames at 1280² — 51.6 s/step × 30 steps ≈ 26 minutes. Whether passing 320
-    yields a 640 output is **not verified**; until it is, treat these two workflows as 1280²-only and
-    budget half an hour per clip.
+12. **WAN 2.2 decodes at double the requested size — measured, not suspected.** Both Wan workflows ask
+    the graph for 640×640 and produce 1280×1280 files. Verified by probe: width/height **320** with 17
+    frames and 10 steps returned a **640×640** file in **41.1 s** (`output/studio/t2v_00002_.mp4`,
+    119,033 B, usable as a preview), while the 640 request took 26:51 for 1280². So the form's
+    width/height are exactly **half** of the real output, and the two extra workflows carry that in
+    their help text now. Practical consequence: a cheap preview is width=320 (≈40 s), a full clip is
+    the default 640 and costs about half an hour.
+13. **Every `help` hint in the registry was invisible.** `schemas.Param` has no `help` field, so pydantic
+    dropped it without a word: outpaint's "hard limit 512 px per side" and the ACE notes never reached
+    the form. The field the UI renders (`app.js`, `<div class="hint">`) is `description`. All 8 such
+    params are migrated and `test_no_workflow_param_carries_a_key_the_schema_would_silently_drop`
+    now fails the build on any unknown param key. Verified in the real UI: the outpaint form shows four
+    hint blocks, and a run with left=right=512 renders the warning "Expansion: 1024 px in total
+    (left 512 px, right 512 px)…" above the result.
 
 ## Blocked on a decision
 
