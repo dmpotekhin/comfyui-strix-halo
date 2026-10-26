@@ -19,7 +19,8 @@ Read this together with `docs/stage5_status.md`, `docs/proposal_stage_s.md`, `do
 | Stage S live | 12 new workflows run end to end → **12/12 verified output**; `sam-object-remove` 7.2 s, `asr-large` 11.7 s on 2.3 s of speech, `upscale-x4plus` 41.0 s first call then 1.7 s |
 | Catalog | **15 model records**, every one with a complete sha256; `used_by` derived from the registry by `tools/catalog_usedby.py`; drift enforced by `tests/test_model_drift.py` |
 | WAN 2.2 t2v | executed for real: **1610.6 s** (26:51) for 49 frames / 30 steps → `output/studio/t2v_00001_.mp4`, 1,736,895 B, **1280×1280**, 24 fps, 2.04 s |
-| Host tools | **31** registered, every one used by at least one workflow; 24 of them added in Stage 5 |
+| WAN 2.2 i2v | executed for real: **1704 s** (28:24 inside ComfyUI, 51.6 s/step steady over 30 steps + ~3 min of load/decode) → `output/studio/i2v_00003_.mp4`, 417,274 B, **1280×1280**, 49 frames, 24 fps, 2.04 s, decodes cleanly. Both Wan runs ask the graph for 640×640 and decode 1280×1280 |
+| Host tools | **33** registered (`HOST_TOOLS`), every one used by at least one workflow; 24 added in Stage 5, 2 in Stage S (`sam_segment`, `ffmpeg_burn_subs`) |
 | Stage 5 live sweep | 29 workflows run end to end → **29/29 verified output, 0 failures**, 151.2 s total, median 0.8 s, max 52.4 s |
 | Upscale line | RealESRGAN (already installed, 0 B downloaded): `img-detail-2x` 1024²→2048² 4,725,351 B, `img-detail-3x` 1024²→3072² 9,042,988 B |
 | ControlNet dual (new) | `cn-dual-canny-depth` at canny 0.15 / depth 0.4 → clean illustration; at 0.45 / 0.6 the source edge map was painted into the render |
@@ -173,6 +174,11 @@ host binaries precisely to avoid it.
     run: fewer than four tags returns a preflight warning naming the failure mode.
 11. **Fixed** — 15 catalog records now, every hash complete, `used_by` derived from the registry, and
     `tests/test_model_drift.py` fails the build if a workflow references an uncatalogued model.
+12. **WAN 2.2 size and cost are not what the parameters say.** Both Wan workflows ask the graph for
+    640×640 and produce 1280×1280 files, so the form's width/height are *half* of the real output, and
+    a "2-second" clip is 49 frames at 1280² — 51.6 s/step × 30 steps ≈ 26 minutes. Whether passing 320
+    yields a 640 output is **not verified**; until it is, treat these two workflows as 1280²-only and
+    budget half an hour per clip.
 
 ## Blocked on a decision
 
