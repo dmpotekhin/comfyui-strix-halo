@@ -1,21 +1,25 @@
-# Implementation status — after Stage S (116 workflows, MobileSAM + x4plus + Whisper large)
+# Implementation status — **RELEASE CANDIDATE** (116 workflows, 180 tests)
 
-Date: 2026-10-28. Stage S detail is in `docs/stage_s_status.md`; the 45-workflow proposal it was cut
-down from is `docs/stage_s_proposal.md`. Stage 5 detail is in `docs/stage5_status.md`. Full Stage R detail, including every measurement
-behind the numbers below, is in `docs/stage_r_status.md`. Every "verified" line below was produced by running a command on this machine in this
-session. Estimates are marked `[ESTIMATE]`.
+Date: 2026-10-27. Project closed as a release candidate: the capability list, the hardware profile and
+the run instructions are in `docs/PROJECT_SUMMARY.md`; the limitations table below is the authoritative
+list of what is not finished and why. Stage S detail is in `docs/stage_s_status.md`; the 45-workflow
+proposal it was cut down from is `docs/stage_s_proposal.md`. Stage 5 detail is in
+`docs/stage5_status.md`. Full Stage R detail, including every measurement behind the numbers below, is
+in `docs/stage_r_status.md`. Every "verified" line below was produced by running a command on this
+machine. Estimates are marked `[ESTIMATE]`.
 
-Read this together with `docs/stage5_status.md`, `docs/proposal_stage_s.md`, `docs/stage_r_status.md` and the generated
+Read this together with `docs/stage5_status.md`, `docs/stage_s_proposal.md`, `docs/stage_r_status.md` and the generated
 `docs/workflow_catalog.md` (registry truth). If this file contradicts the live API, this file is wrong.
 
 ## Verified working
 
 | Item | Evidence |
 |---|---|
-| Test suite | `pytest backend/tests -q` → **177 passed, 0 failed**, 85 warnings in 11.92 s |
+| Test suite | `pytest backend/tests -q` → **180 passed, 0 failed**, 85 warnings in 6.5 s |
 | Service | `./studio/start.sh` → `http://127.0.0.1:8000`, `/api/health` → `comfy_connected: true` |
 | Engine | ComfyUI **0.15.0**, torch **2.9.1+rocm7.2.0**, device `cuda:0 AMD Radeon Graphics`, 675 node classes |
 | Registry | **116 workflows** served: 40 graph, 72 host, 4 chain — all dependencies resolve |
+| Browser upload | real PNG (620,694 B) uploaded through the form → stored byte-identical in `input/` (sha256 match), auto-selected, `img-thumb-320` → 320×243 JPEG in **0.72 s** |
 | Stage S live | 12 new workflows run end to end → **12/12 verified output**; `sam-object-remove` 7.2 s, `asr-large` 11.7 s on 2.3 s of speech, `upscale-x4plus` 41.0 s first call then 1.7 s |
 | Catalog | **15 model records**, every one with a complete sha256; `used_by` derived from the registry by `tools/catalog_usedby.py`; drift enforced by `tests/test_model_drift.py` |
 | WAN 2.2 t2v | executed for real: **1610.6 s** (26:51) for 49 frames / 30 steps → `output/studio/t2v_00001_.mp4`, 1,736,895 B, **1280×1280**, 24 fps, 2.04 s |
@@ -151,44 +155,38 @@ host binaries precisely to avoid it.
     `ffmpeg volumedetect`; `loudness.silent` is set for a constant sample (0.0 dB) or digital silence
     (≈ −91 dB), and a `warning` event explains what to change.
 
-## Open defects (not hidden)
+## Known limitations — release candidate
 
-1. `inpaint-turbo` shows `available` — it genuinely needs a mask the UI does not offer to create.
-2. Sidebar **Workflows** link points at a dead route (real route is `#/library`).
-3. **`run links: 0`** — library cards do not link back to outputs they produced.
-4. One stale DB row `14b4e04c…` says `failed / "job vanished"` for a video that completed (pre-fix
-   watcher); history deliberately not rewritten.
-5. **Fixed** — the repository is under git since `dba1b0e` (204 files, 1.6 MB; weights, outputs and
-   venvs are ignored with reasons in `.gitignore`).
-6. **Fixed for t2v** — `video-t2v-wan22` ran end to end: 1610.6 s, output 1,736,895 B. What that
-   exposed: the graph asks `WanImageToVideo` for 640×640 and the decoded file is **1280×1280**, i.e.
-   the TI2V 5B path doubles the requested size. The params are therefore not the output size, and a
-   "640×640 clip" costs four times the pixels (and ~27 minutes). `video-i2v-wan22` is the same shape.
-7. Upload path still never exercised with a real browser file end-to-end; settings persistence unit-tested only.
-8. **Superseded** — whisper `large-v3-q5_0` is installed and `asr-large` transcribes Russian correctly;
-   `whisper-small` remains the fast option for rough drafts.
-9. `controlnet_aux` preprocessors are still not installed. Depth and cutout no longer need them (host
-   ONNX tools do the job), but lineart/pose/normal still cannot preprocess a raw photo.
-10. **ACE-Step NaN cliff** — with Cyrillic lyrics and tags under ~115 characters the sampler produces an
-    all-NaN latent and a silent FLAC. Still model/build behaviour, but the studio now warns *before* the
-    run: fewer than four tags returns a preflight warning naming the failure mode.
-11. **Fixed** — 15 catalog records now, every hash complete, `used_by` derived from the registry, and
-    `tests/test_model_drift.py` fails the build if a workflow references an uncatalogued model.
-12. **WAN 2.2 decodes at double the requested size — measured, not suspected.** Both Wan workflows ask
-    the graph for 640×640 and produce 1280×1280 files. Verified by probe: width/height **320** with 17
-    frames and 10 steps returned a **640×640** file in **41.1 s** (`output/studio/t2v_00002_.mp4`,
-    119,033 B, usable as a preview), while the 640 request took 26:51 for 1280². So the form's
-    width/height are exactly **half** of the real output, and the two extra workflows carry that in
-    their help text now. Practical consequence: a cheap preview is width=320 (≈40 s), a full clip is
-    the default 640 and costs about half an hour.
-13. **Every `help` hint in the registry was invisible.** `schemas.Param` has no `help` field, so pydantic
-    dropped it without a word: outpaint's "hard limit 512 px per side" and the ACE notes never reached
-    the form. The field the UI renders (`app.js`, `<div class="hint">`) is `description`. All 8 such
-    params are migrated and `test_no_workflow_param_carries_a_key_the_schema_would_silently_drop`
-    now fails the build on any unknown param key. Verified in the real UI: the outpaint form shows four
-    hint blocks, and a run with left=right=512 renders the warning "Expansion: 1024 px in total
-    (left 512 px, right 512 px)…" above the result.
+Every entry carries an explicit status. **KNOWN LIMITATION** = the behaviour is real, understood and
+documented; the product works around it or tells the user. **DEFERRED** = a decision or a budget was
+withheld, so it is out of this release on purpose. **WONTFIX** = deliberately not going to change.
 
+| # | Limitation | Status | Detail / workaround |
+|---|---|---|---|
+| 1 | `inpaint-turbo` is listed as available but needs a mask the UI cannot draw | DEFERRED | The workflow works when given a mask PNG; a mask-drawing canvas is a UI feature, not a fix. `sam-object-remove` / `inpaint-remove` cover the same need from a point prompt. |
+| 2 | Sidebar **Workflows** route | **FIXED** | `app.js:78` maps the entry to `#/library`. Verified today: the click lands on `#/library` with 116 cards. The old dead-route note was stale. |
+| 3 | `run links: 0` — a library card does not link back to what it produced | DEFERRED | Outputs are reachable in Gallery and on the job page; adding per-card run history needs a query the store does not keep. |
+| 4 | One stale DB row `14b4e04c…` says `failed / "job vanished"` for a video that completed | WONTFIX | A pre-fix watcher artefact; the job store is not rewritten, because rewriting history to look clean is worse than one visibly wrong row. |
+| 5 | WAN 2.2 decodes at **2×** the requested width/height | KNOWN LIMITATION | Measured: 320 → 640×640 in 41.1 s; 640 → 1280×1280 in ~27 min. Both workflows state it in the param hint; use width=320 for cheap previews. |
+| 6 | WAN 2.2 throughput: ~51.6 s/step at 1280², so a 2-second clip costs ~30 min | KNOWN LIMITATION | Not a defect — 5B video on an iGPU. Budget accordingly; do not queue two Wan jobs expecting interactive latency. |
+| 7 | **ACE-Step NaN cliff** — Cyrillic lyrics with tags under ~115 chars produce an all-NaN latent and a silent FLAC | KNOWN LIMITATION | Model/build behaviour on this ROCm version. The studio warns *before* the run (fewer than 4 tags → preflight warning naming the failure mode) and flags silent output via `volumedetect`. Write ≥4 comma-separated English tags. |
+| 8 | ControlNet preprocessors for **lineart / pose / normal** are missing | DEFERRED | `controlnet_aux` in-container risks the ROCm PyTorch build. Depth and cutout are solved by host ONNX tools (`depth-map`, `cutout-u2net`), so the same host-tool pattern would cover the other three — nobody has needed them yet. |
+| 9 | Stage S delivered **12 of 45** proposed workflows | DEFERRED | 17 depended on SAM ViT-B (8) and Moondream2 (9), which were explicitly not approved for download; several chains inherit those deps; the rest duplicated existing entries. Approving those two models is the unblock. See `docs/stage_s_status.md`. |
+| 10 | Stage R1 (Qwen image editing) | DEFERRED | fp8 weights on gfx1151 need an upcast and the nodes are CUDA-first; unproven risk, no budget allocated. |
+| 11 | Localhost-only, single user, no authentication | KNOWN LIMITATION | Deliberate: bind is `127.0.0.1`, the UI says "LOCAL ONLY". Exposing it on a network requires adding auth first. |
+| 12 | Job store is SQLite with no migrations | KNOWN LIMITATION | Schema creation is idempotent at startup; there is no versioning story for a future schema change. Export or delete `studio/data/*.db` to reset. |
+| 13 | Uploads are stored by name in `input/`, not by content hash with deduplication | KNOWN LIMITATION | `<epoch>_<sha8>_<original>`; the same file uploaded twice lands twice. Harmless at single-user scale. |
+| 14 | Browser **file upload** was never exercised end-to-end | **FIXED** | Tested today in the real UI: a 620,694 B PNG uploaded through the form, stored byte-identical (sha256 match), selected automatically, and `img-thumb-320` produced a 320×243 JPEG in 0.72 s. |
+| 15 | `help` hints in workflow JSON were silently dropped by pydantic | **FIXED** | Migrated all 8 params to `description` (the field the form renders) and added a test that fails on any unknown param key. |
+
+## Not a limitation, by design
+
+- **No CUDA anywhere.** The stack is ROCm 7.2 on gfx1151; CUDA-only nodes and fp8 paths are refused
+  rather than emulated. This is the point of the project.
+- **Models are never fetched at runtime.** Downloads are explicit, resumable and allow-listed to
+  official hosts, with sha256 verified at the destination.
+- **No ORM, JSON-file persistence, small pure-Python modules.** Deliberate: the studio has to stay
+  auditable by reading it.
 ## Blocked on a decision
 
 Stage R is approved and executed — see `docs/stage_r_status.md`. The remaining item from
@@ -201,7 +199,7 @@ budget on a risk that may end in a non-working workflow.
 ```bash
 cd /home/dmitry/workspace/comfyui-strix-halo
 ./studio/start.sh                                   # app on http://127.0.0.1:8000
-cd studio && ./.venv/bin/python -m pytest backend/tests -q                    # 141 tests
+cd studio && ./.venv/bin/python -m pytest backend/tests -q                    # 180 tests
 cd studio && ./.venv/bin/python tools/gen_registry_docs.py    # refresh generated docs
 cd studio && ./.venv/bin/python tools/gen_catalog_plan.py     # refresh the 107-entry plan
 cd .. && studio/.venv/bin/python studio/tools/smoke_run.py <workflow-id>   # one real run

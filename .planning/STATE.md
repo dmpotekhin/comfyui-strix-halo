@@ -102,3 +102,17 @@ TTS: piper 2023.11.14-2 (`~/.local/piper/piper/piper`) + голос
 (`max(базовая, 0,3 + реплика + 0,6)`) — фильм вырос с 40 до 60,5 с.
 
 ## Замеры Wan (на случай возврата к настоящему движению)
+
+## Закрытие проекта (2026-10-27)
+
+Статус: **RELEASE CANDIDATE**, проект закрыт по решению пользователя. Новых фич и загрузок нет.
+
+- Возможности и как запускать: `docs/PROJECT_SUMMARY.md`.
+- Ограничения со статусами KNOWN LIMITATION / DEFERRED / WONTFIX: `docs/implementation_status.md`.
+- Приёмка: 116 workflow, 180 тестов (6.5 с), git чистый, доки честные.
+- Проверено в браузере end-to-end: загрузка файла через форму (620 694 B PNG → байт-в-байт в
+  `input/`, sha256 совпал) и запуск `img-thumb-320` → 320×243 JPEG за 0.72 с.
+- Три грабли оформлены скиллами: `pydantic-drops-unknown-keys`, `comfyui-mask-polarity`,
+  `wan22-resolution-doubling`.
+- Дальше по ценности: одобрить SAM ViT-B + Moondream2 (оживит 17 из 23 недостающих workflow),
+  canvas для маски, host-препроцессоры lineart/pose/normal, превью WAN 320×320 в один клик.
