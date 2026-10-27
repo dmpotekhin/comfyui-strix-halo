@@ -1,6 +1,6 @@
 # STATE — «Три кошки» (локальный мультфильм)
 
-Обновлено: 2026-10-26 16:00 MSK
+Обновлено: 2026-10-27 15:10 MSK (Stage T закрыт)
 
 ## Где мы
 
@@ -20,10 +20,18 @@
 
 ## Инфраструктура студии (обновлено 28.10, ночь)
 
-Студия выросла до **116 workflow** (40 graph / 72 host / 4 chain, `177 passed`) после Stage S:
-MobileSAM (ONNX на хосте), RealESRGAN x4plus, whisper large-v3 — установлено и прогнано живьём,
-см. `docs/stage_s_status.md`. ViT-B и Moondream2 не скачивались (не одобрены), поэтому из 45
-заявленных workflow доставлено 12.
+Студия выросла до **127 workflow** (40 graph / 82 host / 5 chain, `192 passed`): после Stage S
+(MobileSAM, RealESRGAN x4plus, whisper large-v3) добавлен **Stage T** — SAM ViT-B и Moondream2,
+3.84 GiB, все четыре файла сверены по sha256 с каталогом. Витрина моделей: 19 записей, host-инструментов 34.
+Замеры и честные вердикты — `docs/stage_t_status.md`.
+
+Коротко про Stage T:
+* ViT-B на `input/ref_raccoon.png` держит **9.86 %** кадра против **7.52 %** у MobileSAM — не отрезает
+  крылья, хвост и передние лапы; цена — **4.04 с** против **1.51 с** (в 2.7 раза).
+* `pick=largest|auto|smallest` во всех восьми SAM-workflow. У ViT-B маска с максимальным
+  предсказанным IoU после одного клика в центр — кусок в 743 px, поэтому дефолт `largest`.
+* Moondream2 (2B, Vulkan) — **2.0–3.1 с** на вопрос, девять `vlm-*` workflow. Это описание, а не
+  извлечение: OCR нет, а на мультяшном еноте модель «увидела» очки, шляпу и биту в лапах.
 
 WAN 2.2 TI2V 5B **проверен на реальном прогоне**: t2v — 26 мин 51 с на 49 кадров / 30 шагов
 (`output/studio/t2v_00001_.mp4`, 1.74 MB, 24 fps, 2.04 с); i2v — 28 мин 24 с внутри ComfyUI,
@@ -105,14 +113,16 @@ TTS: piper 2023.11.14-2 (`~/.local/piper/piper/piper`) + голос
 
 ## Закрытие проекта (2026-10-27)
 
-Статус: **RELEASE CANDIDATE**, проект закрыт по решению пользователя. Новых фич и загрузок нет.
+Статус: **RELEASE CANDIDATE**. После закрытия пользователь одобрил Stage T (ViT-B + Moondream2);
+Stage T выполнен и закрыт, новых фич и загрузок больше нет.
 
 - Возможности и как запускать: `docs/PROJECT_SUMMARY.md`.
 - Ограничения со статусами KNOWN LIMITATION / DEFERRED / WONTFIX: `docs/implementation_status.md`.
-- Приёмка: 116 workflow, 180 тестов (6.5 с), git чистый, доки честные.
+- Приёмка: 127 workflow, 192 теста (8.7 с), git чистый, доки честные.
 - Проверено в браузере end-to-end: загрузка файла через форму (620 694 B PNG → байт-в-байт в
   `input/`, sha256 совпал) и запуск `img-thumb-320` → 320×243 JPEG за 0.72 с.
 - Три грабли оформлены скиллами: `pydantic-drops-unknown-keys`, `comfyui-mask-polarity`,
   `wan22-resolution-doubling`.
-- Дальше по ценности: одобрить SAM ViT-B + Moondream2 (оживит 17 из 23 недостающих workflow),
-  canvas для маски, host-препроцессоры lineart/pose/normal, превью WAN 320×320 в один клик.
+- Дальше по ценности: canvas для маски (открывает `inpaint-turbo` и редактируемые SAM-цепочки),
+  host-препроцессоры lineart/pose/normal по тому же ONNX-шаблону, превью WAN 320×320 в один клик,
+  композит-обратно после инпейнта (убирает кайму в `sam-region-restyle`).

@@ -67,7 +67,10 @@ def _require_file(path: Path, what: str) -> None:
 
 
 def _run(argv: list[str], *, timeout: float, stdin_text: str | None = None,
-         env: dict[str, str] | None = None) -> None:
+         env: dict[str, str] | None = None,
+         capture: bool = False) -> subprocess.CompletedProcess[str] | None:
+    """Run a fixed argv. With capture=True return the completed process so a caller can read stdout —
+    needed by tools whose *product is the text*, not a file (the vision model)."""
     try:
         proc = subprocess.run(argv, input=stdin_text, capture_output=True, text=True,
                               timeout=timeout, env=env, check=False)
@@ -78,6 +81,7 @@ def _run(argv: list[str], *, timeout: float, stdin_text: str | None = None,
     if proc.returncode != 0:
         tail = (proc.stderr or proc.stdout or "").strip().splitlines()[-3:]
         raise HostToolError(f"{Path(argv[0]).name} exited {proc.returncode}: {' | '.join(tail)}")
+    return proc if capture else None
 
 
 # --------------------------------------------------------------------------- piper TTS
@@ -399,11 +403,19 @@ def run_cutout(params: dict[str, Any], output_root: Path, *, timeout: float,
 SAM_MODEL_DIR = STUDIO_ROOT / "tools" / "vision-models"
 SAM_ENCODER = SAM_MODEL_DIR / "mobilesam.encoder.onnx"
 SAM_DECODER = SAM_MODEL_DIR / "mobilesam.decoder.onnx"
+# ViT-B: the same 1024-frame pipeline with ~30x the encoder parameters. Slower on CPU (~4x) and
+# noticeably better on hair, wire, fur and fingertips, which is where ViT-T visibly chews the edge.
+VITB_ENCODER = SAM_MODEL_DIR / "sam-vit-base-encoder.onnx"
+VITB_DECODER = SAM_MODEL_DIR / "sam-vit-base-decoder.onnx"
+SAM_MODELS: dict[str, tuple[Path, Path]] = {
+    "mobilesam": (SAM_ENCODER, SAM_DECODER),
+    "vitb": (VITB_ENCODER, VITB_DECODER),
+}
 
 
 def run_sam_segment(params: dict[str, Any], output_root: Path, *, timeout: float,
                     on_stage: Callable[[str, float], None] | None = None) -> list[dict[str, Any]]:
-    """Point-prompted segmentation (MobileSAM on the host CPU): mask, cutout, background blur, preview.
+    """Point-prompted segmentation (SAM on the host CPU): mask, cutout, background blur, preview.
 
     Different tool from `cutout` on purpose: U²-Net is promptless and answers "the salient object",
     SAM answers "the thing under this point" — which is what makes object removal and background
@@ -411,15 +423,23 @@ def run_sam_segment(params: dict[str, Any], output_root: Path, *, timeout: float
     """
     src = _source_image(params)
     mode = str(params.get("mode") or "cutout").strip().lower()
-    if mode not in ("mask", "cutout", "blur", "overlay"):
-        raise HostToolError(f"unknown sam mode {mode!r}; choose mask, cutout, blur or overlay")
-    _require_file(SAM_ENCODER, "MobileSAM encoder (mobilesam.encoder.onnx)")
-    _require_file(SAM_DECODER, "MobileSAM decoder (mobilesam.decoder.onnx)")
+    if mode not in ("mask", "cutout", "blur", "overlay", "layers"):
+        raise HostToolError(f"unknown sam mode {mode!r}; choose mask, cutout, blur, overlay or layers")
+    model = str(params.get("model") or "mobilesam").strip().lower()
+    if model not in SAM_MODELS:
+        raise HostToolError(f"unknown sam model {model!r}; choose mobilesam or vitb")
+    pick = str(params.get("pick") or "largest").strip().lower()
+    if pick not in ("auto", "largest", "smallest"):
+        raise HostToolError(f"unknown pick {pick!r}; choose auto, largest or smallest")
+    encoder, decoder = SAM_MODELS[model]
+    _require_file(encoder, f"SAM encoder ({encoder.name})")
+    _require_file(decoder, f"SAM decoder ({decoder.name})")
 
     name = _unique_pair(output_root / "studio", COMFY_INPUT, f"sam_{mode}", "png")
     dst = output_root / "studio" / name
     argv = [str(VISION_PY), str(VISION_CLI.parent / "sam_cli.py"), mode,
-            "--input", str(src), "--output", str(dst), "--model-dir", str(SAM_MODEL_DIR)]
+            "--input", str(src), "--output", str(dst), "--model-dir", str(SAM_MODEL_DIR),
+            "--model", model, "--pick", pick]
     points = str(params.get("points") or "").strip()
     if points:
         argv += ["--points", points]
@@ -431,15 +451,92 @@ def run_sam_segment(params: dict[str, Any], output_root: Path, *, timeout: float
         argv += ["--blur", f"{blur:g}"]
 
     if on_stage:
-        on_stage(f"segmenting ({mode}, MobileSAM CPU)", 0.35)
+        label = "ViT-B" if model == "vitb" else "MobileSAM"
+        on_stage(f"segmenting ({mode}, {label} CPU)", 0.35)
     _run(argv, timeout=timeout)
     if not dst.exists() or dst.stat().st_size < 100:
         raise HostToolError("sam_cli produced no image")
     shutil.copyfile(dst, COMFY_INPUT / name)
     # Alpha matters downstream: a chain graph feeds this PNG back through LoadImage, which reads the
     # mask from the alpha channel. `mask` mode is a plain L image, so it also works as a mask source.
-    return [{"filename": name, "subfolder": "studio", "type": "output", "kind": "image",
-             "node": "host:mobilesam", "size": dst.stat().st_size, "comfy_input": name}]
+    outputs = [{"filename": name, "subfolder": "studio", "type": "output", "kind": "image",
+                "node": f"host:{'vitb' if model == 'vitb' else 'mobilesam'}",
+                "size": dst.stat().st_size, "comfy_input": name,
+                "pick": pick}]
+    if mode == "layers":
+        plate = dst.with_name(f"{dst.stem}_bg{dst.suffix}")
+        if not plate.exists():
+            raise HostToolError("sam_cli reported layers but wrote no background plate")
+        shutil.copyfile(plate, COMFY_INPUT / plate.name)
+        outputs.append({"filename": plate.name, "subfolder": "studio", "type": "output",
+                        "kind": "image", "node": f"host:{'vitb' if model == 'vitb' else 'mobilesam'}",
+                        "size": plate.stat().st_size, "comfy_input": plate.name,
+                        "role": "background"})
+    return outputs
+
+
+VLM_DIR = STUDIO_ROOT / "tools" / "vlm-models"
+VLM_TEXT = VLM_DIR / "moondream2-text-model-f16_ct-vicuna.gguf"
+VLM_MMPROJ = VLM_DIR / "moondream2-mmproj-f16-20250414.gguf"
+# llama.cpp's multimodal CLI, built with Vulkan. Override with LLAMA_MTMD_BIN when the build lives
+# elsewhere — the binary is a host dependency, deliberately not vendored into the repo.
+LLAMA_MTMD = Path(os.environ.get("LLAMA_MTMD_BIN") or
+                  Path.home() / "llama.cpp" / "build" / "bin" / "llama-mtmd-cli")
+
+
+def _strip_ansi(text: str) -> str:
+    import re
+    return re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", text)
+
+
+def run_vlm_ask(params: dict[str, Any], output_root: Path, *, timeout: float,
+                on_stage: Callable[[str, float], None] | None = None) -> list[dict[str, Any]]:
+    """Image + question -> text answer, by a 2B vision model on the host (Moondream2 via llama.cpp).
+
+    The engine's perspective is an image plus a prompt; this is the same shape but the answer is
+    words, not pixels, so it cannot be a graph. Runs on Vulkan when available and falls back to CPU,
+    which keeps the ROCm container out of it entirely.
+    """
+    src = _source_image(params)
+    _require_file(VLM_TEXT, "Moondream2 text model (moondream2-text-model-f16_ct-vicuna.gguf)")
+    _require_file(VLM_MMPROJ, "Moondream2 vision projector (moondream2-mmproj-f16-20250414.gguf)")
+    _require_file(LLAMA_MTMD, "llama-mtmd-cli (build llama.cpp, see docs/PROJECT_SUMMARY.md)")
+
+    prompt = str(params.get("prompt") or "Describe this image in one sentence.").strip()
+    if not prompt:
+        raise HostToolError("prompt is empty")
+    max_tokens = int(_num(params, "max_tokens", 96, 4, 512, "answer length in tokens"))
+    device = str(params.get("device") or "vulkan").strip().lower()
+    if device not in ("vulkan", "cpu"):
+        raise HostToolError(f"unknown device {device!r}; choose vulkan or cpu")
+
+    argv = [str(LLAMA_MTMD), "-m", str(VLM_TEXT), "--mmproj", str(VLM_MMPROJ),
+            "--image", str(src), "-p", prompt, "-n", str(max_tokens), "-c", "4096",
+            "--temp", "0.2",
+            "-dev", "Vulkan0" if device == "vulkan" else "none",
+            ]
+    # No --log-disable here on purpose: in this build it silences the generated text as well as the
+    # log, which reads as an empty answer. Log lines go to stderr, the answer to stdout.
+    if on_stage:
+        on_stage(f"asking Moondream2 ({device})", 0.3)
+    proc = _run(argv, timeout=timeout, capture=True)
+    raw = _strip_ansi(proc.stdout or "")
+    answer = raw
+    # The CLI echoes the prompt on stdout; everything after it is the model's answer.
+    if prompt in raw:
+        answer = raw.split(prompt, 1)[1]
+    lines = [ln.rstrip() for ln in answer.splitlines()]
+    lines = [ln for ln in lines if ln.strip() and not ln.lstrip().startswith(("llama_", "load_", "print_info", "main:"))]
+    text = "\n".join(lines).strip()
+    if not text:
+        raise HostToolError(f"Moondream2 produced no answer (exit {proc.returncode}): "
+                            f"{(proc.stderr or '')[-300:]}")
+
+    stem = _unique_target(output_root / "studio", f"vlm_{src.stem.rstrip('_')}"[:40], "txt")
+    stem.write_text(text + "\n", encoding="utf-8")
+    return [{"filename": stem.name, "subfolder": "studio", "type": "output", "kind": "text",
+             "node": "host:moondream2", "size": stem.stat().st_size, "text": text,
+             "prompt": prompt, "model": "moondream2-20250414"}]
 
 
 TOOLS: dict[str, Callable[..., list[dict[str, Any]]]] = {
@@ -1168,6 +1265,7 @@ def run_burn_subs(params: dict[str, Any], output_root: Path, *, timeout: float,
 TOOLS.update({
     "ffmpeg_burn_subs": run_burn_subs,
     "sam_segment": run_sam_segment,
+    "vlm_ask": run_vlm_ask,
     # image utilities (Pillow, CPU)
     "image_convert": run_image_convert,
     "image_resize": run_image_resize,

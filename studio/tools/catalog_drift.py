@@ -18,6 +18,7 @@ CATALOG = ROOT / "studio" / "registry" / "models_catalog.json"
 # Where each ComfyUI folder lives. Host-tool assets deliberately live under studio/tools, not models/.
 SPECIAL = {
     "vision-models": ROOT / "studio" / "tools" / "vision-models",
+    "vlm-models": ROOT / "studio" / "tools" / "vlm-models",
     "whisper-models": ROOT / "studio" / "tools" / "whisper-models",
 }
 

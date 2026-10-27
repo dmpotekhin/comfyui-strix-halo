@@ -49,6 +49,7 @@ ERROR_CATEGORIES = {
     "enhancement": "Image enhancement",
     "audio": "Audio",
     "content": "Content production",
+    "vision-language": "Vision & language",
     "pipeline": "Combined pipelines",
 }
 

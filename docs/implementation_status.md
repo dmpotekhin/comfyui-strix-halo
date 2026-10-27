@@ -1,9 +1,10 @@
-# Implementation status — **RELEASE CANDIDATE** (116 workflows, 180 tests)
+# Implementation status — **RELEASE CANDIDATE** (127 workflows, 192 tests)
 
 Date: 2026-10-27. Project closed as a release candidate: the capability list, the hardware profile and
 the run instructions are in `docs/PROJECT_SUMMARY.md`; the limitations table below is the authoritative
-list of what is not finished and why. Stage S detail is in `docs/stage_s_status.md`; the 45-workflow
-proposal it was cut down from is `docs/stage_s_proposal.md`. Stage 5 detail is in
+list of what is not finished and why. Stage T detail — SAM ViT-B and Moondream2 measurements — is in
+`docs/stage_t_status.md`; Stage S detail is in `docs/stage_s_status.md`; the 45-workflow proposal it
+was cut down from is `docs/stage_s_proposal.md`. Stage 5 detail is in
 `docs/stage5_status.md`. Full Stage R detail, including every measurement behind the numbers below, is
 in `docs/stage_r_status.md`. Every "verified" line below was produced by running a command on this
 machine. Estimates are marked `[ESTIMATE]`.
@@ -15,16 +16,18 @@ Read this together with `docs/stage5_status.md`, `docs/stage_s_proposal.md`, `do
 
 | Item | Evidence |
 |---|---|
-| Test suite | `pytest backend/tests -q` → **180 passed, 0 failed**, 85 warnings in 6.5 s |
+| Test suite | `pytest backend/tests -q` → **192 passed, 0 failed**, 85 warnings in 8.7 s |
 | Service | `./studio/start.sh` → `http://127.0.0.1:8000`, `/api/health` → `comfy_connected: true` |
 | Engine | ComfyUI **0.15.0**, torch **2.9.1+rocm7.2.0**, device `cuda:0 AMD Radeon Graphics`, 675 node classes |
-| Registry | **116 workflows** served: 40 graph, 72 host, 4 chain — all dependencies resolve |
+| Registry | **127 workflows** served: 40 graph, 82 host, 5 chain — all dependencies resolve |
 | Browser upload | real PNG (620,694 B) uploaded through the form → stored byte-identical in `input/` (sha256 match), auto-selected, `img-thumb-320` → 320×243 JPEG in **0.72 s** |
+| Stage T live | 4 Stage T workflows run through `POST /api/jobs` → **4/4 completed**: `sam-cutout` (vitb) 4.04 s / 1,871,389 B, `sam-layer-split` (vitb) 4.02 s / two exact-complement layers (103,440 px + 945,136 px, union 1,048,576), `sam-region-restyle` (vitb) 9.03 s / 1,566,316 B, `vlm-caption` 3.03 s / 284 B text |
+| SAM ViT-B vs MobileSAM (new) | same image, same API path: ViT-B **9.86 %** subject coverage vs MobileSAM **7.52 %** — MobileSAM drops the wings, tail and front paws; wall time 4.04 s vs 1.51 s warm (**2.7×**) |
 | Stage S live | 12 new workflows run end to end → **12/12 verified output**; `sam-object-remove` 7.2 s, `asr-large` 11.7 s on 2.3 s of speech, `upscale-x4plus` 41.0 s first call then 1.7 s |
-| Catalog | **15 model records**, every one with a complete sha256; `used_by` derived from the registry by `tools/catalog_usedby.py`; drift enforced by `tests/test_model_drift.py` |
+| Catalog | **19 model records**, every one with a complete sha256; `used_by` derived from the registry by `tools/catalog_usedby.py`; drift enforced by `tests/test_model_drift.py` |
 | WAN 2.2 t2v | executed for real: **1610.6 s** (26:51) for 49 frames / 30 steps → `output/studio/t2v_00001_.mp4`, 1,736,895 B, **1280×1280**, 24 fps, 2.04 s |
 | WAN 2.2 i2v | executed for real: **1704 s** (28:24 inside ComfyUI, 51.6 s/step steady over 30 steps + ~3 min of load/decode) → `output/studio/i2v_00003_.mp4`, 417,274 B, **1280×1280**, 49 frames, 24 fps, 2.04 s, decodes cleanly. Both Wan runs ask the graph for 640×640 and decode 1280×1280 |
-| Host tools | **33** registered (`HOST_TOOLS`), every one used by at least one workflow; 24 added in Stage 5, 2 in Stage S (`sam_segment`, `ffmpeg_burn_subs`) |
+| Host tools | **34** registered (`hosttools.TOOLS`), every one used by at least one workflow; 24 added in Stage 5, 2 in Stage S (`sam_segment`, `ffmpeg_burn_subs`), 1 in Stage T (`vlm_ask`) |
 | Stage 5 live sweep | 29 workflows run end to end → **29/29 verified output, 0 failures**, 151.2 s total, median 0.8 s, max 52.4 s |
 | Upscale line | RealESRGAN (already installed, 0 B downloaded): `img-detail-2x` 1024²→2048² 4,725,351 B, `img-detail-3x` 1024²→3072² 9,042,988 B |
 | ControlNet dual (new) | `cn-dual-canny-depth` at canny 0.15 / depth 0.4 → clean illustration; at 0.45 / 0.6 the source edge map was painted into the render |
@@ -47,6 +50,30 @@ Read this together with `docs/stage5_status.md`, `docs/stage_s_proposal.md`, `do
 | Dead-audio guard (new) | every audio output carries `loudness {mean_db, max_db, silent}`; a dead track also writes a `warning` event (verified live on a known-bad prompt) |
 | Docs generation | `tools/gen_registry_docs.py` → dependency matrix + catalog regenerated from the live engine |
 | Catalog plan | `tools/gen_catalog_plan.py` → **107 entries**, 19 READY / 36 VALIDATED / 34 NEEDS_MODELS / 13 NEEDS_NODES / 2 EXPERIMENTAL / 3 UNAVAILABLE |
+
+## Added — Stage T (SAM ViT-B + Moondream2)
+
+Approved and executed after the Stage S report named two models as the blocker for 17 workflows.
+4,125,194,853 B (**3.84 GiB**) downloaded, every file hash-checked against its catalog row.
+
+- **SAM ViT-B** (`sam-vit-base-encoder.onnx` 359,323,905 B + `sam-vit-base-decoder.onnx` 16,557,892 B)
+  joins MobileSAM behind the same `sam_segment` host tool with a `model=mobilesam|vitb` switch; the six
+  existing SAM workflows gained that switch, MobileSAM stayed the default. Measured on
+  `input/ref_raccoon.png`: ViT-B keeps 9.86 % of the frame against MobileSAM's 7.52 %, i.e. it keeps the
+  wings, tail and paws MobileSAM truncates, for 2.7× the wall time.
+- **Two new SAM workflows**: `sam-layer-split` (subject + background plate, verified as an exact
+  partition — overlap 0 px) and `sam-region-restyle` (mask → `VAEEncodeForInpaint` → sampler).
+- **`pick` parameter** on all eight SAM definitions: `largest` (default), `auto` (SAM's own
+  highest-IoU choice), `smallest`. Needed because ViT-B's most confident mask on a single centre click
+  was a 743-pixel sub-part, not the animal.
+- **Moondream2** (2B, F16 GGUF + projector, 3.75 GiB) behind the new `vlm_ask` host tool, driven by
+  `llama-mtmd-cli` on Vulkan: **2.0–3.1 s per question**. Nine `vlm-*` workflows in the new
+  `vision-language` category, prompts written in question form because the model refuses
+  instruction-shaped prompts.
+- **Honest verdict**: these are describe-only workflows. Captions, alt-text drafts and short factual
+  questions work; transcription, translation, object lists and exact counts do not — Moondream2 has no
+  OCR head. Per-workflow verdicts and the measured hallucinations are in `docs/stage_t_status.md`.
+- Registry: **116 → 127**; tools 33 → 34; catalog 15 → 19; tests 180 → **192**.
 
 ## Added — Stage 5 (media expansion)
 
@@ -171,13 +198,16 @@ withheld, so it is out of this release on purpose. **WONTFIX** = deliberately no
 | 6 | WAN 2.2 throughput: ~51.6 s/step at 1280², so a 2-second clip costs ~30 min | KNOWN LIMITATION | Not a defect — 5B video on an iGPU. Budget accordingly; do not queue two Wan jobs expecting interactive latency. |
 | 7 | **ACE-Step NaN cliff** — Cyrillic lyrics with tags under ~115 chars produce an all-NaN latent and a silent FLAC | KNOWN LIMITATION | Model/build behaviour on this ROCm version. The studio warns *before* the run (fewer than 4 tags → preflight warning naming the failure mode) and flags silent output via `volumedetect`. Write ≥4 comma-separated English tags. |
 | 8 | ControlNet preprocessors for **lineart / pose / normal** are missing | DEFERRED | `controlnet_aux` in-container risks the ROCm PyTorch build. Depth and cutout are solved by host ONNX tools (`depth-map`, `cutout-u2net`), so the same host-tool pattern would cover the other three — nobody has needed them yet. |
-| 9 | Stage S delivered **12 of 45** proposed workflows | DEFERRED | 17 depended on SAM ViT-B (8) and Moondream2 (9), which were explicitly not approved for download; several chains inherit those deps; the rest duplicated existing entries. Approving those two models is the unblock. See `docs/stage_s_status.md`. |
+| 9 | Stage S delivered **12 of 45** proposed workflows | **FIXED in Stage T** | The 17 that depended on SAM ViT-B (8) and Moondream2 (9) were unblocked when both models were approved and downloaded; the registry now carries them (127 workflows total). What did *not* arrive is the 45-workflow ambition itself — the rest were duplicates or unproven. See `docs/stage_t_status.md`. |
 | 10 | Stage R1 (Qwen image editing) | DEFERRED | fp8 weights on gfx1151 need an upcast and the nodes are CUDA-first; unproven risk, no budget allocated. |
 | 11 | Localhost-only, single user, no authentication | KNOWN LIMITATION | Deliberate: bind is `127.0.0.1`, the UI says "LOCAL ONLY". Exposing it on a network requires adding auth first. |
 | 12 | Job store is SQLite with no migrations | KNOWN LIMITATION | Schema creation is idempotent at startup; there is no versioning story for a future schema change. Export or delete `studio/data/*.db` to reset. |
 | 13 | Uploads are stored by name in `input/`, not by content hash with deduplication | KNOWN LIMITATION | `<epoch>_<sha8>_<original>`; the same file uploaded twice lands twice. Harmless at single-user scale. |
 | 14 | Browser **file upload** was never exercised end-to-end | **FIXED** | Tested today in the real UI: a 620,694 B PNG uploaded through the form, stored byte-identical (sha256 match), selected automatically, and `img-thumb-320` produced a 320×243 JPEG in 0.72 s. |
 | 15 | `help` hints in workflow JSON were silently dropped by pydantic | **FIXED** | Migrated all 8 params to `description` (the field the form renders) and added a test that fails on any unknown param key. |
+| 16 | SAM ViT-B with `pick=auto` can return a **sub-part** instead of the object | KNOWN LIMITATION | Measured: one centre click on the raccoon gave 743 px (0.07 %) at `auto` vs 103,440 px (9.86 %) at `largest`. This is SAM's own ranking, not a wiring bug, so the SAM workflows default to `pick=largest`; `auto` and `smallest` stay available. |
+| 17 | `sam-region-restyle` leaves a thin bright rim at the mask boundary | KNOWN LIMITATION | VAE 8× downsampling quantises the mask edge, so a few background pixels are repainted. `denoise 0.8 / steps 10 / grow_mask_by 2` keeps the subject and a thin rim; `denoise 0.55` removes the rim but collapses the subject into a silhouette. Removing it properly needs a composite-back step (not in scope). |
+| 18 | Moondream2 has **no OCR** and invents props | KNOWN LIMITATION | Measured: "glasses and a hat", "a bat in its paws", a "striped umbrella" on a cartoon raccoon; on a screenshot it says text exists but returns fragments, not a transcript. Use the `vlm-*` workflows to describe, never to extract. `vlm-read-text` / `vlm-translate-text` are honest placeholders for a stronger VLM. |
 
 ## Not a limitation, by design
 
@@ -199,7 +229,7 @@ budget on a risk that may end in a non-working workflow.
 ```bash
 cd /home/dmitry/workspace/comfyui-strix-halo
 ./studio/start.sh                                   # app on http://127.0.0.1:8000
-cd studio && ./.venv/bin/python -m pytest backend/tests -q                    # 180 tests
+cd studio && ./.venv/bin/python -m pytest backend/tests -q                    # 192 tests
 cd studio && ./.venv/bin/python tools/gen_registry_docs.py    # refresh generated docs
 cd studio && ./.venv/bin/python tools/gen_catalog_plan.py     # refresh the 107-entry plan
 cd .. && studio/.venv/bin/python studio/tools/smoke_run.py <workflow-id>   # one real run

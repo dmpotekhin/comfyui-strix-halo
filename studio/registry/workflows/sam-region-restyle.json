@@ -1,0 +1,291 @@
+{
+  "id": "sam-region-restyle",
+  "name": "Restyle only the subject (SAM + img2img)",
+  "category": "image-editing",
+  "description": "SAM masks the object under your point, then SDXL-Turbo re-renders just that region at partial denoise. The background stays byte-identical, so you can change the subject without touching the scene.",
+  "execution": "chain",
+  "host_tool": "sam_segment",
+  "chain_bind": {
+    "node": "4",
+    "input": "image"
+  },
+  "output_kind": "image",
+  "timeout_s": 900,
+  "min_vram_gb": 10,
+  "tags": [
+    "segmentation",
+    "sam",
+    "inpaint",
+    "restyle",
+    "img2img",
+    "chain",
+    "stage-t"
+  ],
+  "models": [
+    {
+      "folder": "host:studio/tools/vision-models",
+      "file": "mobilesam.encoder.onnx",
+      "purpose": "MobileSAM ViT-T encoder (ONNX, CPU)"
+    },
+    {
+      "folder": "host:studio/tools/vision-models",
+      "file": "mobilesam.decoder.onnx",
+      "purpose": "MobileSAM mask decoder (ONNX, CPU)"
+    },
+    {
+      "folder": "host:studio/tools/vision-models",
+      "file": "sam-vit-base-encoder.onnx",
+      "purpose": "SAM ViT-B image encoder (ONNX, CPU)"
+    },
+    {
+      "folder": "host:studio/tools/vision-models",
+      "file": "sam-vit-base-decoder.onnx",
+      "purpose": "SAM ViT-B prompt-encoder + mask decoder (ONNX, CPU)"
+    },
+    {
+      "folder": "checkpoints",
+      "file": "sd_xl_turbo_1.0_fp16.safetensors",
+      "purpose": "SDXL-Turbo base model (6-step sampling)"
+    }
+  ],
+  "parameters": [
+    {
+      "key": "image",
+      "label": "Photo",
+      "type": "image",
+      "default": "ref_raccoon.png",
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      }
+    },
+    {
+      "key": "points",
+      "label": "Points to the object (x,y;x,y — empty means centre)",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "key": "labels",
+      "label": "Labels (1=object, 0=background; empty = all 1)",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "key": "mode",
+      "label": "Mask mode",
+      "type": "choice",
+      "options": [
+        "cutout"
+      ],
+      "default": "cutout"
+    },
+    {
+      "key": "model",
+      "label": "Segmentation model",
+      "type": "choice",
+      "options": [
+        "mobilesam",
+        "vitb"
+      ],
+      "default": "mobilesam",
+      "description": "mobilesam = ViT-T, ~1.5 s on this CPU, fine for whole objects. vitb = ViT-B, about 4x slower, keeps hair, wire, fur and fingertips that ViT-T rounds off. Same 1024 frame, same prompts."
+    },
+    {
+      "key": "pick",
+      "label": "Which of the three masks",
+      "type": "choice",
+      "options": [
+        "largest",
+        "auto",
+        "smallest"
+      ],
+      "default": "largest",
+      "description": "SAM always returns three candidate masks. largest = the whole object, which is what a cutout wants; auto = the model's own best-confidence pick, which on a clean subject is sometimes a sub-part (an eye, a buckle) because it is unambiguous at that scale."
+    },
+    {
+      "key": "prompt",
+      "label": "How the subject should look",
+      "type": "text",
+      "multiline": true,
+      "default": "highly detailed, sharp focus, studio lighting, same subject",
+      "required": true,
+      "bind": {
+        "node": "2",
+        "input": "text"
+      }
+    },
+    {
+      "key": "negative",
+      "label": "Negative prompt",
+      "type": "text",
+      "multiline": true,
+      "default": "blurry, low quality, deformed, watermark, text",
+      "required": true,
+      "bind": {
+        "node": "3",
+        "input": "text"
+      }
+    },
+    {
+      "key": "denoise",
+      "label": "Denoise (0.2 = touch-up, 0.9 = new subject)",
+      "type": "float",
+      "default": 0.55,
+      "min": 0.15,
+      "max": 0.95,
+      "step": 0.05,
+      "bind": {
+        "node": "6",
+        "input": "denoise"
+      }
+    },
+    {
+      "key": "grow_mask_by",
+      "label": "Grow mask by (px)",
+      "type": "int",
+      "default": 6,
+      "min": 0,
+      "max": 64,
+      "bind": {
+        "node": "5",
+        "input": "grow_mask_by"
+      }
+    },
+    {
+      "key": "steps",
+      "label": "Steps",
+      "type": "int",
+      "default": 6,
+      "min": 1,
+      "max": 20,
+      "bind": {
+        "node": "6",
+        "input": "steps"
+      }
+    },
+    {
+      "key": "seed",
+      "label": "Seed",
+      "type": "seed",
+      "default": 42,
+      "bind": {
+        "node": "6",
+        "input": "seed"
+      }
+    }
+  ],
+  "notes": "Denoise is the whole dial here: 0.2-0.35 cleans up texture and lighting, 0.5-0.7 restyles the material or the light, above 0.8 the subject is replaced and only the silhouette survives. The mask is the SAM cutout inverted back to the subject (LoadImage returns 1 - alpha), so what gets re-rendered is the object, not the background.",
+  "graph": {
+    "1": {
+      "class_type": "CheckpointLoaderSimple",
+      "inputs": {
+        "ckpt_name": "sd_xl_turbo_1.0_fp16.safetensors"
+      }
+    },
+    "2": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "highly detailed, sharp focus, studio lighting, same subject",
+        "clip": [
+          "1",
+          1
+        ]
+      }
+    },
+    "3": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "blurry, low quality, deformed, watermark, text",
+        "clip": [
+          "1",
+          1
+        ]
+      }
+    },
+    "4": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "example.png"
+      }
+    },
+    "5": {
+      "class_type": "VAEEncodeForInpaint",
+      "inputs": {
+        "pixels": [
+          "4",
+          0
+        ],
+        "vae": [
+          "1",
+          2
+        ],
+        "mask": [
+          "10",
+          0
+        ],
+        "grow_mask_by": 6
+      }
+    },
+    "6": {
+      "class_type": "KSampler",
+      "inputs": {
+        "seed": 42,
+        "steps": 6,
+        "cfg": 1.0,
+        "sampler_name": "euler",
+        "scheduler": "normal",
+        "denoise": 0.55,
+        "model": [
+          "1",
+          0
+        ],
+        "positive": [
+          "2",
+          0
+        ],
+        "negative": [
+          "3",
+          0
+        ],
+        "latent_image": [
+          "5",
+          0
+        ]
+      }
+    },
+    "7": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "6",
+          0
+        ],
+        "vae": [
+          "1",
+          2
+        ]
+      }
+    },
+    "9": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "filename_prefix": "studio/sam_restyle",
+        "images": [
+          "7",
+          0
+        ]
+      }
+    },
+    "10": {
+      "class_type": "InvertMask",
+      "inputs": {
+        "mask": [
+          "4",
+          1
+        ]
+      }
+    }
+  }
+}

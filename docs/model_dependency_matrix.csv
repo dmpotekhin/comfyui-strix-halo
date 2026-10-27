@@ -32,18 +32,39 @@ inpaint-turbo,Inpaint — replace part of an image (mask),image-editing,sd_xl_tu
 outpaint-turbo,Outpaint — extend the frame,image-editing,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
 sam-bg-blur,Background blur — by point (MobileSAM),image-editing,mobilesam.decoder.onnx,yes,no,ready_to_test
 sam-bg-blur,Background blur — by point (MobileSAM),image-editing,mobilesam.encoder.onnx,yes,no,ready_to_test
+sam-bg-blur,Background blur — by point (MobileSAM),image-editing,sam-vit-base-decoder.onnx,yes,no,ready_to_test
+sam-bg-blur,Background blur — by point (MobileSAM),image-editing,sam-vit-base-encoder.onnx,yes,no,ready_to_test
 sam-bg-replace,Replace background — by point (MobileSAM + SDXL-Turbo),image-editing,mobilesam.decoder.onnx,yes,no,ready_to_test
 sam-bg-replace,Replace background — by point (MobileSAM + SDXL-Turbo),image-editing,mobilesam.encoder.onnx,yes,no,ready_to_test
+sam-bg-replace,Replace background — by point (MobileSAM + SDXL-Turbo),image-editing,sam-vit-base-decoder.onnx,yes,no,ready_to_test
+sam-bg-replace,Replace background — by point (MobileSAM + SDXL-Turbo),image-editing,sam-vit-base-encoder.onnx,yes,no,ready_to_test
 sam-bg-replace,Replace background — by point (MobileSAM + SDXL-Turbo),image-editing,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
 sam-cutout,Cutout — by point (MobileSAM),image-editing,mobilesam.decoder.onnx,yes,no,ready_to_test
 sam-cutout,Cutout — by point (MobileSAM),image-editing,mobilesam.encoder.onnx,yes,no,ready_to_test
+sam-cutout,Cutout — by point (MobileSAM),image-editing,sam-vit-base-decoder.onnx,yes,no,ready_to_test
+sam-cutout,Cutout — by point (MobileSAM),image-editing,sam-vit-base-encoder.onnx,yes,no,ready_to_test
+sam-layer-split,Layers — subject + background (SAM),image-editing,mobilesam.decoder.onnx,yes,no,ready_to_test
+sam-layer-split,Layers — subject + background (SAM),image-editing,mobilesam.encoder.onnx,yes,no,ready_to_test
+sam-layer-split,Layers — subject + background (SAM),image-editing,sam-vit-base-decoder.onnx,yes,no,ready_to_test
+sam-layer-split,Layers — subject + background (SAM),image-editing,sam-vit-base-encoder.onnx,yes,no,ready_to_test
 sam-mask,Mask — by point (MobileSAM),image-editing,mobilesam.decoder.onnx,yes,no,ready_to_test
 sam-mask,Mask — by point (MobileSAM),image-editing,mobilesam.encoder.onnx,yes,no,ready_to_test
+sam-mask,Mask — by point (MobileSAM),image-editing,sam-vit-base-decoder.onnx,yes,no,ready_to_test
+sam-mask,Mask — by point (MobileSAM),image-editing,sam-vit-base-encoder.onnx,yes,no,ready_to_test
 sam-object-remove,Remove an object — by point (MobileSAM + SDXL-Turbo),image-editing,mobilesam.decoder.onnx,yes,no,ready_to_test
 sam-object-remove,Remove an object — by point (MobileSAM + SDXL-Turbo),image-editing,mobilesam.encoder.onnx,yes,no,ready_to_test
+sam-object-remove,Remove an object — by point (MobileSAM + SDXL-Turbo),image-editing,sam-vit-base-decoder.onnx,yes,no,ready_to_test
+sam-object-remove,Remove an object — by point (MobileSAM + SDXL-Turbo),image-editing,sam-vit-base-encoder.onnx,yes,no,ready_to_test
 sam-object-remove,Remove an object — by point (MobileSAM + SDXL-Turbo),image-editing,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
 sam-overlay,Mask preview — by point (MobileSAM),image-editing,mobilesam.decoder.onnx,yes,no,ready_to_test
 sam-overlay,Mask preview — by point (MobileSAM),image-editing,mobilesam.encoder.onnx,yes,no,ready_to_test
+sam-overlay,Mask preview — by point (MobileSAM),image-editing,sam-vit-base-decoder.onnx,yes,no,ready_to_test
+sam-overlay,Mask preview — by point (MobileSAM),image-editing,sam-vit-base-encoder.onnx,yes,no,ready_to_test
+sam-region-restyle,Restyle only the subject (SAM + img2img),image-editing,mobilesam.decoder.onnx,yes,no,ready_to_test
+sam-region-restyle,Restyle only the subject (SAM + img2img),image-editing,mobilesam.encoder.onnx,yes,no,ready_to_test
+sam-region-restyle,Restyle only the subject (SAM + img2img),image-editing,sam-vit-base-decoder.onnx,yes,no,ready_to_test
+sam-region-restyle,Restyle only the subject (SAM + img2img),image-editing,sam-vit-base-encoder.onnx,yes,no,ready_to_test
+sam-region-restyle,Restyle only the subject (SAM + img2img),image-editing,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
 cn-canny-sdxl,Edge-guided generation — SDXL Canny ControlNet,image-generation,controlnet-canny-sdxl-1.0.safetensors,yes,yes,ready_to_test
 cn-canny-sdxl,Edge-guided generation — SDXL Canny ControlNet,image-generation,sd_xl_turbo_1.0_fp16.safetensors,yes,yes,ready_to_test
 cn-depth-sdxl,Depth-guided generation — host depth map → SDXL Depth ControlNet,image-generation,controlnet-depth-sdxl-1.0.safetensors,yes,yes,ready_to_test
@@ -79,3 +100,21 @@ video-i2v-wan22,Image to Video — Wan 2.2 TI2V-5B,video,wan2.2_vae.safetensors,
 video-t2v-wan22,Text to Video — Wan 2.2 TI2V-5B,video,umt5_xxl_fp8_e4m3fn_scaled.safetensors,yes,yes,ready_to_test
 video-t2v-wan22,Text to Video — Wan 2.2 TI2V-5B,video,wan2.2_ti2v_5B_fp16.safetensors,yes,yes,ready_to_test
 video-t2v-wan22,Text to Video — Wan 2.2 TI2V-5B,video,wan2.2_vae.safetensors,yes,yes,ready_to_test
+vlm-alt-text,Image → alt text (accessibility),vision-language,moondream2-mmproj-f16-20250414.gguf,yes,no,ready_to_test
+vlm-alt-text,Image → alt text (accessibility),vision-language,moondream2-text-model-f16_ct-vicuna.gguf,yes,no,ready_to_test
+vlm-caption,Image → caption (one line),vision-language,moondream2-mmproj-f16-20250414.gguf,yes,no,ready_to_test
+vlm-caption,Image → caption (one line),vision-language,moondream2-text-model-f16_ct-vicuna.gguf,yes,no,ready_to_test
+vlm-caption-detailed,Image → detailed description,vision-language,moondream2-mmproj-f16-20250414.gguf,yes,no,ready_to_test
+vlm-caption-detailed,Image → detailed description,vision-language,moondream2-text-model-f16_ct-vicuna.gguf,yes,no,ready_to_test
+vlm-dataset-caption,Image → training caption,vision-language,moondream2-mmproj-f16-20250414.gguf,yes,no,ready_to_test
+vlm-dataset-caption,Image → training caption,vision-language,moondream2-text-model-f16_ct-vicuna.gguf,yes,no,ready_to_test
+vlm-image-to-prompt,Image → text-to-image prompt,vision-language,moondream2-mmproj-f16-20250414.gguf,yes,no,ready_to_test
+vlm-image-to-prompt,Image → text-to-image prompt,vision-language,moondream2-text-model-f16_ct-vicuna.gguf,yes,no,ready_to_test
+vlm-inventory,Image → list of objects,vision-language,moondream2-mmproj-f16-20250414.gguf,yes,no,ready_to_test
+vlm-inventory,Image → list of objects,vision-language,moondream2-text-model-f16_ct-vicuna.gguf,yes,no,ready_to_test
+vlm-read-text,Image → read the text in it,vision-language,moondream2-mmproj-f16-20250414.gguf,yes,no,ready_to_test
+vlm-read-text,Image → read the text in it,vision-language,moondream2-text-model-f16_ct-vicuna.gguf,yes,no,ready_to_test
+vlm-translate-text,Image → translate its text to English,vision-language,moondream2-mmproj-f16-20250414.gguf,yes,no,ready_to_test
+vlm-translate-text,Image → translate its text to English,vision-language,moondream2-text-model-f16_ct-vicuna.gguf,yes,no,ready_to_test
+vlm-vqa,Image → answer a question,vision-language,moondream2-mmproj-f16-20250414.gguf,yes,no,ready_to_test
+vlm-vqa,Image → answer a question,vision-language,moondream2-text-model-f16_ct-vicuna.gguf,yes,no,ready_to_test

@@ -108,7 +108,8 @@ def upscale_graph(shrink: float, prefix: str) -> dict:
 
 
 def inpaint_chain_graph(positive: str, negative: str, prefix: str, grow: int = 14,
-                        invert_mask: bool = False) -> dict:
+                        invert_mask: bool = False, denoise: float = 1.0,
+                        steps: int = 6) -> dict:
     """Graph half of a chain: node 4 is the LoadImage the host tool's PNG lands in.
 
     LoadImage reads MASK as `1 - alpha` and saves only the three colour channels, so a cutout PNG
@@ -125,8 +126,8 @@ def inpaint_chain_graph(positive: str, negative: str, prefix: str, grow: int = 1
               "inputs": {"pixels": ["4", 0], "vae": ["1", 2], "mask": mask_src,
                          "grow_mask_by": grow}},
         "6": {"class_type": "KSampler",
-              "inputs": {"seed": 42, "steps": 6, "cfg": 1.0, "sampler_name": "euler",
-                         "scheduler": "normal", "denoise": 1.0, "model": ["1", 0],
+              "inputs": {"seed": 42, "steps": steps, "cfg": 1.0, "sampler_name": "euler",
+                         "scheduler": "normal", "denoise": denoise, "model": ["1", 0],
                          "positive": ["2", 0], "negative": ["3", 0], "latent_image": ["5", 0]}},
         "7": {"class_type": "VAEDecode", "inputs": {"samples": ["6", 0], "vae": ["1", 2]}},
         "9": {"class_type": "SaveImage",

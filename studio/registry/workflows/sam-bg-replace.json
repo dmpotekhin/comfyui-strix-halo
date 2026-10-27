@@ -119,7 +119,10 @@
     "sam",
     "inpaint",
     "chain",
-    "stage-s"
+    "stage-s",
+    "vitb",
+    "sam-vit-base",
+    "stage-t"
   ],
   "models": [
     {
@@ -136,6 +139,16 @@
       "folder": "checkpoints",
       "file": "sd_xl_turbo_1.0_fp16.safetensors",
       "purpose": "SDXL-Turbo base model (6-step sampling)"
+    },
+    {
+      "folder": "host:studio/tools/vision-models",
+      "file": "sam-vit-base-encoder.onnx",
+      "purpose": "SAM ViT-B image encoder (ONNX, CPU)"
+    },
+    {
+      "folder": "host:studio/tools/vision-models",
+      "file": "sam-vit-base-decoder.onnx",
+      "purpose": "SAM ViT-B prompt-encoder + mask decoder (ONNX, CPU)"
     }
   ],
   "parameters": [
@@ -161,6 +174,29 @@
       "label": "Labels (1=object, 0=background; empty = all 1)",
       "type": "string",
       "default": ""
+    },
+    {
+      "key": "model",
+      "label": "Segmentation model",
+      "type": "choice",
+      "options": [
+        "mobilesam",
+        "vitb"
+      ],
+      "default": "mobilesam",
+      "description": "mobilesam = ViT-T, ~1.5 s on this CPU, fine for whole objects. vitb = ViT-B, about 4x slower, keeps hair, wire, fur and fingertips that ViT-T rounds off. Same 1024 frame, same prompts."
+    },
+    {
+      "key": "pick",
+      "label": "Which of the three masks",
+      "type": "choice",
+      "options": [
+        "largest",
+        "auto",
+        "smallest"
+      ],
+      "default": "largest",
+      "description": "SAM always returns three candidate masks. largest = the whole object, which is what a cutout wants; auto = the model's own best-confidence pick, which on a clean subject is sometimes a sub-part (an eye, a buckle) because it is unambiguous at that scale."
     },
     {
       "key": "mode",
@@ -243,5 +279,5 @@
       }
     }
   ],
-  "notes": "Chain: MobileSAM cuts the prompted object out on the host, then SDXL-Turbo inpaints the hole. Two passes over the same mask, so a bad prompt point shows up as a half-erased object rather than as an error."
+  "notes": "Chain: MobileSAM cuts the prompted object out on the host, then SDXL-Turbo inpaints the hole. Two passes over the same mask, so a bad prompt point shows up as a half-erased object rather than as an error. Model switch: ViT-B runs the same 1024 frame with about 30x the encoder parameters and roughly 4x the runtime; it keeps hair and thin structures that ViT-T rounds off. Both weights ship, pick per run."
 }

@@ -51,6 +51,7 @@ def test_required_metadata_present():
         assert d["category"] in {
             "image-generation", "image-editing", "image-enhancement",
             "video-generation", "audio-generation", "characters",
+            "vision-language",
         }, f"{f.name} unexpected category {d['category']}"
 
 

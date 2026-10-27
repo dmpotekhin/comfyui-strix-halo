@@ -3,7 +3,7 @@
 Generated from `studio/registry/workflows/*.json` by
 `studio/tools/gen_registry_docs.py`. Do not edit by hand — re-run the generator.
 
-**Total entries: 116.** Every id below exists as a JSON file in the registry.
+**Total entries: 127.** Every id below exists as a JSON file in the registry.
 
 `test_status` is written by whoever ran the graph; it is not inferred.
 
@@ -71,12 +71,14 @@ Generated from `studio/registry/workflows/*.json` by
 | `inpaint-remove` | Inpaint — remove an object | image-editing | image | ready_to_test | untested | 7 | `sd_xl_turbo_1.0_fp16.safetensors` | requires an alpha mask. —. |
 | `inpaint-turbo` | Inpaint — replace part of an image (mask) | image-editing | image | available | passed (2026-10-26) | 7 | `sd_xl_turbo_1.0_fp16.safetensors` | requires an alpha mask. Job completed in 5.1 s on 2026-10-26 producing inpaint_00002_.png (512x512, 444 KB). Verified visually: the masked region (100,140)-(220,260) was regenerated wh. |
 | `outpaint-turbo` | Outpaint — extend the frame | image-editing | image | ready_to_test | untested | 9 | `sd_xl_turbo_1.0_fp16.safetensors` | — |
-| `sam-bg-blur` | Background blur — by point (MobileSAM) | image-editing | image | ready_to_test | untested | 5 | `mobilesam.encoder.onnx`, `mobilesam.decoder.onnx` | — |
-| `sam-bg-replace` | Replace background — by point (MobileSAM + SDXL-Turbo) | image-editing | image | ready_to_test | untested | 10 | `mobilesam.encoder.onnx`, `mobilesam.decoder.onnx`, `sd_xl_turbo_1.0_fp16.safetensors` | — |
-| `sam-cutout` | Cutout — by point (MobileSAM) | image-editing | image | ready_to_test | untested | 4 | `mobilesam.encoder.onnx`, `mobilesam.decoder.onnx` | — |
-| `sam-mask` | Mask — by point (MobileSAM) | image-editing | image | ready_to_test | untested | 4 | `mobilesam.encoder.onnx`, `mobilesam.decoder.onnx` | — |
-| `sam-object-remove` | Remove an object — by point (MobileSAM + SDXL-Turbo) | image-editing | image | ready_to_test | untested | 10 | `mobilesam.encoder.onnx`, `mobilesam.decoder.onnx`, `sd_xl_turbo_1.0_fp16.safetensors` | — |
-| `sam-overlay` | Mask preview — by point (MobileSAM) | image-editing | image | ready_to_test | untested | 4 | `mobilesam.encoder.onnx`, `mobilesam.decoder.onnx` | — |
+| `sam-bg-blur` | Background blur — by point (MobileSAM) | image-editing | image | ready_to_test | untested | 7 | `mobilesam.encoder.onnx`, `mobilesam.decoder.onnx`, `sam-vit-base-encoder.onnx`, `sam-vit-base-decoder.onnx` | — |
+| `sam-bg-replace` | Replace background — by point (MobileSAM + SDXL-Turbo) | image-editing | image | ready_to_test | untested | 12 | `mobilesam.encoder.onnx`, `mobilesam.decoder.onnx`, `sd_xl_turbo_1.0_fp16.safetensors`, `sam-vit-base-encoder.onnx`, `sam-vit-base-decoder.onnx` | — |
+| `sam-cutout` | Cutout — by point (MobileSAM) | image-editing | image | ready_to_test | untested | 6 | `mobilesam.encoder.onnx`, `mobilesam.decoder.onnx`, `sam-vit-base-encoder.onnx`, `sam-vit-base-decoder.onnx` | — |
+| `sam-layer-split` | Layers — subject + background (SAM) | image-editing | image | ready_to_test | untested | 6 | `mobilesam.encoder.onnx`, `mobilesam.decoder.onnx`, `sam-vit-base-encoder.onnx`, `sam-vit-base-decoder.onnx` | — |
+| `sam-mask` | Mask — by point (MobileSAM) | image-editing | image | ready_to_test | untested | 6 | `mobilesam.encoder.onnx`, `mobilesam.decoder.onnx`, `sam-vit-base-encoder.onnx`, `sam-vit-base-decoder.onnx` | — |
+| `sam-object-remove` | Remove an object — by point (MobileSAM + SDXL-Turbo) | image-editing | image | ready_to_test | untested | 12 | `mobilesam.encoder.onnx`, `mobilesam.decoder.onnx`, `sd_xl_turbo_1.0_fp16.safetensors`, `sam-vit-base-encoder.onnx`, `sam-vit-base-decoder.onnx` | — |
+| `sam-overlay` | Mask preview — by point (MobileSAM) | image-editing | image | ready_to_test | untested | 6 | `mobilesam.encoder.onnx`, `mobilesam.decoder.onnx`, `sam-vit-base-encoder.onnx`, `sam-vit-base-decoder.onnx` | — |
+| `sam-region-restyle` | Restyle only the subject (SAM + img2img) | image-editing | image | ready_to_test | untested | 12 | `mobilesam.encoder.onnx`, `mobilesam.decoder.onnx`, `sam-vit-base-encoder.onnx`, `sam-vit-base-decoder.onnx`, `sd_xl_turbo_1.0_fp16.safetensors` | — |
 | `cn-canny-sdxl` | Edge-guided generation — SDXL Canny ControlNet | image-generation | image | ready_to_test | untested | 9 | `sd_xl_turbo_1.0_fp16.safetensors`, `controlnet-canny-sdxl-1.0.safetensors` | — |
 | `cn-depth-sdxl` | Depth-guided generation — host depth map → SDXL Depth ControlNet | image-generation | image | ready_to_test | untested | 7 | `sd_xl_turbo_1.0_fp16.safetensors`, `controlnet-depth-sdxl-1.0.safetensors`, `depth-anything-v2-small.onnx` | — |
 | `cn-dual-canny-depth` | ControlNet — canny + depth together | image-generation | image | ready_to_test | untested | 8 | `sd_xl_turbo_1.0_fp16.safetensors`, `controlnet-canny-sdxl-1.0.safetensors`, `controlnet-depth-sdxl-1.0.safetensors`, `depth-anything-v2-small.onnx` | — |
@@ -125,12 +127,21 @@ Generated from `studio/registry/workflows/*.json` by
 | `video-assemble` | Assemble images into an MP4 | video | video | ready_to_test | untested | 3 | — | — |
 | `video-i2v-wan22` | Image to Video — Wan 2.2 TI2V-5B | video | video | ready_to_test | untested | 11 | `wan2.2_ti2v_5B_fp16.safetensors`, `umt5_xxl_fp8_e4m3fn_scaled.safetensors`, `wan2.2_vae.safetensors`, `CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors` | — |
 | `video-t2v-wan22` | Text to Video — Wan 2.2 TI2V-5B | video | video | ready_to_test | untested | 10 | `wan2.2_ti2v_5B_fp16.safetensors`, `umt5_xxl_fp8_e4m3fn_scaled.safetensors`, `wan2.2_vae.safetensors` | — |
+| `vlm-alt-text` | Image → alt text (accessibility) | vision-language | text | ready_to_test | untested | 4 | `moondream2-text-model-f16_ct-vicuna.gguf`, `moondream2-mmproj-f16-20250414.gguf` | — |
+| `vlm-caption` | Image → caption (one line) | vision-language | text | ready_to_test | untested | 4 | `moondream2-text-model-f16_ct-vicuna.gguf`, `moondream2-mmproj-f16-20250414.gguf` | — |
+| `vlm-caption-detailed` | Image → detailed description | vision-language | text | ready_to_test | untested | 4 | `moondream2-text-model-f16_ct-vicuna.gguf`, `moondream2-mmproj-f16-20250414.gguf` | — |
+| `vlm-dataset-caption` | Image → training caption | vision-language | text | ready_to_test | untested | 4 | `moondream2-text-model-f16_ct-vicuna.gguf`, `moondream2-mmproj-f16-20250414.gguf` | — |
+| `vlm-image-to-prompt` | Image → text-to-image prompt | vision-language | text | ready_to_test | untested | 4 | `moondream2-text-model-f16_ct-vicuna.gguf`, `moondream2-mmproj-f16-20250414.gguf` | — |
+| `vlm-inventory` | Image → list of objects | vision-language | text | ready_to_test | untested | 4 | `moondream2-text-model-f16_ct-vicuna.gguf`, `moondream2-mmproj-f16-20250414.gguf` | — |
+| `vlm-read-text` | Image → read the text in it | vision-language | text | ready_to_test | untested | 4 | `moondream2-text-model-f16_ct-vicuna.gguf`, `moondream2-mmproj-f16-20250414.gguf` | — |
+| `vlm-translate-text` | Image → translate its text to English | vision-language | text | ready_to_test | untested | 4 | `moondream2-text-model-f16_ct-vicuna.gguf`, `moondream2-mmproj-f16-20250414.gguf` | — |
+| `vlm-vqa` | Image → answer a question | vision-language | text | ready_to_test | untested | 4 | `moondream2-text-model-f16_ct-vicuna.gguf`, `moondream2-mmproj-f16-20250414.gguf` | — |
 
 ## Summary
 
-- entries: 116
+- entries: 127
 - with a recorded passing run: 1 (inpaint-turbo)
-- never executed here: 115
+- never executed here: 126
 
 ## Known limitations
 

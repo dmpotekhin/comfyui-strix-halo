@@ -1,0 +1,74 @@
+{
+  "id": "vlm-image-to-prompt",
+  "name": "Image → text-to-image prompt",
+  "category": "vision-language",
+  "description": "Turns a reference picture into a prompt you can paste into the image generator. The answer comes back as a sentence, not as comma-separated tag soup: this model will not follow a formatting instruction, so read it as a starting point and tighten it in the prompt box.",
+  "execution": "host",
+  "host_tool": "vlm_ask",
+  "output_kind": "text",
+  "timeout_s": 300,
+  "min_vram_gb": 0,
+  "tags": [
+    "vision",
+    "vlm",
+    "moondream2",
+    "caption",
+    "host-tool",
+    "stage-t",
+    "reverse-prompt",
+    "prompt-engineering"
+  ],
+  "models": [
+    {
+      "folder": "host:studio/tools/vlm-models",
+      "file": "moondream2-text-model-f16_ct-vicuna.gguf",
+      "purpose": "Moondream2 2B text model (GGUF, F16)"
+    },
+    {
+      "folder": "host:studio/tools/vlm-models",
+      "file": "moondream2-mmproj-f16-20250414.gguf",
+      "purpose": "Moondream2 vision projector (GGUF, F16)"
+    }
+  ],
+  "parameters": [
+    {
+      "key": "image",
+      "label": "Image",
+      "type": "image",
+      "default": "ref_raccoon.png",
+      "required": true,
+      "options_from": {
+        "class_type": "LoadImage",
+        "input": "image"
+      }
+    },
+    {
+      "key": "prompt",
+      "label": "Question / instruction",
+      "type": "text",
+      "multiline": true,
+      "default": "What would be a good prompt to generate this image?",
+      "required": true
+    },
+    {
+      "key": "max_tokens",
+      "label": "Answer length (tokens)",
+      "type": "int",
+      "default": 160,
+      "min": 16,
+      "max": 512
+    },
+    {
+      "key": "device",
+      "label": "Compute device",
+      "type": "choice",
+      "options": [
+        "vulkan",
+        "cpu"
+      ],
+      "default": "vulkan",
+      "description": "vulkan offloads to the Radeon 8060S through llama.cpp's Vulkan backend; cpu is the fallback and about 3-5x slower. Neither one touches the ROCm container."
+    }
+  ],
+  "notes": "Moondream2 (2B, 2025-04-14) runs on the host through llama.cpp's multimodal CLI, so the answer costs no VRAM and no engine round-trip. The model is a captioner, not an oracle: it reads what is plainly visible and invents nothing, but it cannot count above a handful or read small text reliably."
+}

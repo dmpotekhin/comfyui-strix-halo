@@ -1,7 +1,7 @@
 {
   "_comment": "Curated download catalog. The download manager refuses any model id that is not here, and only allows https URLs on Hugging Face / GitHub, so this file is the whole allow-list. size_bytes and sha256 are measured from the installed copy (sha256 omitted when it was never verified against the publisher).",
   "version": 1,
-  "updated": "2026-10-28",
+  "updated": "2026-10-27",
   "models": [
     {
       "id": "ace-step-v1-3.5b",
@@ -109,6 +109,96 @@
       "used_by": [],
       "gated": false,
       "note": "Host-tool asset: the mask decoder half of the MobileSAM pair; the nnny/onnx-mobile-sam export of the same name is decoder-only and cannot run alone."
+    },
+    {
+      "id": "sam-vitb-encoder",
+      "title": "SAM ViT-B image encoder (ONNX, host CPU)",
+      "folder": "vision-models",
+      "file": "sam-vit-base-encoder.onnx",
+      "url": "https://huggingface.co/Xenova/sam-vit-base/resolve/main/onnx/vision_encoder.onnx",
+      "license": "Apache-2.0",
+      "size_bytes": 359323905,
+      "sha256": "238f9a4496b1cfe2a9d6961f3c37c2ce32d89601d4ab95edd0d27f410f682ae5",
+      "used_by": [
+        "sam-mask",
+        "sam-cutout",
+        "sam-bg-blur",
+        "sam-overlay",
+        "sam-bg-replace",
+        "sam-object-remove",
+        "sam-layer-split",
+        "sam-region-restyle"
+      ],
+      "gated": false,
+      "note": "Host-tool asset: the heavy half of the ViT-B pair, transformers.js export of facebook/sam-vit-base. 30x the ViT-T encoder parameters; keeps hair, wire and fingertips that MobileSAM rounds off. Runs on the CPU through ONNX Runtime, so it costs no VRAM."
+    },
+    {
+      "id": "sam-vitb-decoder",
+      "title": "SAM ViT-B prompt encoder + mask decoder (ONNX, host CPU)",
+      "folder": "vision-models",
+      "file": "sam-vit-base-decoder.onnx",
+      "url": "https://huggingface.co/Xenova/sam-vit-base/resolve/main/onnx/prompt_encoder_mask_decoder.onnx",
+      "license": "Apache-2.0",
+      "size_bytes": 16557892,
+      "sha256": "f4514391764fbd56e08e119060d874ecd7d52994bfb1968af159e12d4943b5bb",
+      "used_by": [
+        "sam-mask",
+        "sam-cutout",
+        "sam-bg-blur",
+        "sam-overlay",
+        "sam-bg-replace",
+        "sam-object-remove",
+        "sam-layer-split",
+        "sam-region-restyle"
+      ],
+      "gated": false,
+      "note": "Host-tool asset: decoder half of the ViT-B pair. Unlike the MobileSAM decoder it takes no orig_im_size and returns 256x256 logits, so sam_cli upsamples and crops them back to the source resolution itself."
+    },
+    {
+      "id": "moondream2-text",
+      "title": "Moondream2 2B text model (GGUF, F16)",
+      "folder": "vlm-models",
+      "file": "moondream2-text-model-f16_ct-vicuna.gguf",
+      "url": "https://huggingface.co/ggml-org/moondream2-20250414-GGUF/resolve/main/moondream2-text-model-f16_ct-vicuna.gguf",
+      "license": "Apache-2.0",
+      "size_bytes": 2839535072,
+      "sha256": "925bcb666baf69ed747e26121af287b16ae7764483be9548b1382f29783689a5",
+      "used_by": [
+        "vlm-caption",
+        "vlm-caption-detailed",
+        "vlm-alt-text",
+        "vlm-vqa",
+        "vlm-image-to-prompt",
+        "vlm-inventory",
+        "vlm-read-text",
+        "vlm-dataset-caption",
+        "vlm-translate-text"
+      ],
+      "gated": false,
+      "note": "Host-tool asset: the language half of Moondream2 (2025-04-14), run by llama.cpp's multimodal CLI. Vulkan offload to the 8060S; the ROCm container is not involved."
+    },
+    {
+      "id": "moondream2-mmproj",
+      "title": "Moondream2 vision projector (GGUF, F16)",
+      "folder": "vlm-models",
+      "file": "moondream2-mmproj-f16-20250414.gguf",
+      "url": "https://huggingface.co/ggml-org/moondream2-20250414-GGUF/resolve/main/moondream2-mmproj-f16-20250414.gguf",
+      "license": "Apache-2.0",
+      "size_bytes": 909777984,
+      "sha256": "4cc1cb3660d87ff56432ebeb7884ad35d67c48c7b9f6b2856f305e39c38eed8f",
+      "used_by": [
+        "vlm-caption",
+        "vlm-caption-detailed",
+        "vlm-alt-text",
+        "vlm-vqa",
+        "vlm-image-to-prompt",
+        "vlm-inventory",
+        "vlm-read-text",
+        "vlm-dataset-caption",
+        "vlm-translate-text"
+      ],
+      "gated": false,
+      "note": "Host-tool asset: image projector for Moondream2. Cannot be used without the text model — llama-mtmd-cli needs both files on the command line."
     },
     {
       "id": "mobilesam-encoder-vitt",

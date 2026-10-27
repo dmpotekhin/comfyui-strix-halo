@@ -36,15 +36,28 @@ SIDE = 1024
 # with them, and anything else silently degrades the masks instead of failing loudly.
 PIXEL_MEAN = np.array([123.675, 116.28, 103.53], dtype=np.float32) / 255.0
 PIXEL_STD = np.array([58.395, 57.12, 57.375], dtype=np.float32) / 255.0
+# The transformers.js ViT-B export uses the ImageNet constants instead of SAM's 0-255 pair. Same
+# weights family, different exporter — the numbers below are Xenova's SamImageProcessor values.
+VITB_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+VITB_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+
+# Two interchangeable model families, same CLI. ViT-T (MobileSAM) is ~1.5 s but coarse on thin
+# structures; ViT-B is ~4x slower and keeps hair, wires and fingers. The decoder alone is useless in
+# both cases — it consumes the encoder's embeddings.
+MODELS: dict[str, tuple[str, str]] = {
+    "mobilesam": ("mobilesam.encoder.onnx", "mobilesam.decoder.onnx"),
+    "vitb": ("sam-vit-base-encoder.onnx", "sam-vit-base-decoder.onnx"),
+}
 
 
-def _load_model_dir(explicit: str | None) -> Path:
+def _load_model_dir(explicit: str | None, model: str = "mobilesam") -> Path:
     if explicit:
         d = Path(explicit).expanduser()
     else:
         d = Path(__file__).resolve().parent.parent / "vision-models"
-    enc = d / "mobilesam.encoder.onnx"
-    dec = d / "mobilesam.decoder.onnx"
+    enc_name, dec_name = MODELS.get(model, MODELS["mobilesam"])
+    enc = d / enc_name
+    dec = d / dec_name
     if not enc.exists():
         raise SystemExit(f"encoder missing: {enc}")
     if not dec.exists():
@@ -53,19 +66,20 @@ def _load_model_dir(explicit: str | None) -> Path:
     return d
 
 
-def _sessions(model_dir: Path):
+def _sessions(model_dir: Path, model: str = "mobilesam"):
     import onnxruntime as ort
+    enc_name, dec_name = MODELS.get(model, MODELS["mobilesam"])
     so = ort.SessionOptions()
     so.intra_op_num_threads = 0          # let ORT use every physical core it finds
     so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-    enc = ort.InferenceSession(str(model_dir / "mobilesam.encoder.onnx"), so,
+    enc = ort.InferenceSession(str(model_dir / enc_name), so,
                                providers=["CPUExecutionProvider"])
-    dec = ort.InferenceSession(str(model_dir / "mobilesam.decoder.onnx"), so,
+    dec = ort.InferenceSession(str(model_dir / dec_name), so,
                                providers=["CPUExecutionProvider"])
     return enc, dec
 
 
-def _preprocess(im: Image.Image) -> tuple[np.ndarray, float, tuple[int, int]]:
+def _preprocess(im: Image.Image, model: str = "mobilesam") -> tuple[np.ndarray, float, tuple[int, int]]:
     """Resize longest side to 1024, zero-pad to 1024², normalise. Returns tensor + scale + original size."""
     w, h = im.size
     scale = SIDE / max(h, w)
@@ -74,6 +88,10 @@ def _preprocess(im: Image.Image) -> tuple[np.ndarray, float, tuple[int, int]]:
     canvas = Image.new("RGB", (SIDE, SIDE), (0, 0, 0))
     canvas.paste(small, (0, 0))
     arr = np.asarray(canvas, dtype=np.float32) / 255.0
+    if model == "vitb":
+        # NCHW [1,3,1024,1024] with ImageNet stats — the transformers.js export's shape.
+        arr = ((arr - VITB_MEAN) / VITB_STD).transpose(2, 0, 1)[None, ...]
+        return np.ascontiguousarray(arr, dtype=np.float32), scale, (w, h)
     arr = (arr - PIXEL_MEAN) / PIXEL_STD
     # This encoder is exported NHWC without a batch axis: ['image_height','image_width',3].
     return arr, scale, (w, h)
@@ -105,9 +123,86 @@ def _parse_points(raw: str | None, labels_raw: str | None, w: int, h: int) -> tu
     return pts, labels
 
 
+def _choose_candidate(masks: np.ndarray, ious: np.ndarray | None, pick: str) -> tuple[int, float]:
+    """Pick one of SAM's three masks. `auto` is SAM's own rule (highest predicted IoU).
+
+    Two prompts can honestly differ: on a clean subject ViT-B's most confident mask is sometimes a
+    sub-part - an eye, a buckle - because it is unambiguous at that scale, while ViT-T returns the
+    whole body. `largest` and `smallest` exist so that behaviour is a choice instead of a surprise.
+    """
+    areas = [float((m > 0).mean()) for m in masks]
+    if pick == "largest":
+        best = int(np.argmax(areas))
+    elif pick == "smallest":
+        best = int(np.argmin(areas))
+    elif ious is not None:
+        best = int(np.argmax(ious))
+    else:
+        best = int(np.argmax(areas))
+    score = float(ious[best]) if ious is not None and best < len(ious) else 0.0
+    return best, score
+
+
+def _segment_vitb(im: Image.Image, model_dir: Path, points: list[list[float]],
+                  labels: list[float], pick: str = "auto") -> tuple[np.ndarray, float]:
+    """ViT-B path: the transformers.js split export, whose decoder differs from MobileSAM's.
+
+    Its declared inputs are `input_points [1,1,N,2]`, `input_labels [1,1,N]` (int64),
+    `image_embeddings [1,256,64,64]` and `image_positional_embeddings [1,256,64,64]`; it emits
+    `iou_scores [1,1,3]` and `pred_masks [1,1,3,256,256]`. There is no `orig_im_size` input, so the
+    mask comes back low-res and has to be upsampled here — a silent 256² mask is the failure mode
+    this branch exists to avoid.
+    """
+    enc, dec = _sessions(model_dir, "vitb")
+    tensor, scale, (w, h) = _preprocess(im, "vitb")
+
+    enc_outs = enc.run(None, {enc.get_inputs()[0].name: tensor})
+    embedded = positional = None
+    for value, meta in zip(enc_outs, enc.get_outputs()):
+        if "position" in meta.name.lower():
+            positional = value
+        elif embedded is None:
+            embedded = value
+    if embedded is None:
+        raise SystemExit("vitb encoder produced no embeddings")
+
+    coords = np.array([[[[p[0] * scale, p[1] * scale] for p in points]]], dtype=np.float32)
+    point_labels = np.array([[[int(round(v)) for v in labels]]], dtype=np.int64)
+    feeds = {"input_points": coords, "input_labels": point_labels,
+             "image_embeddings": embedded}
+    if positional is not None:
+        feeds["image_positional_embeddings"] = positional
+    declared = {i.name for i in dec.get_inputs()}
+    if set(feeds) != declared:
+        raise SystemExit(f"vitb decoder wants {sorted(declared)}; this CLI feeds {sorted(feeds)}")
+    outs = dict(zip([o.name for o in dec.get_outputs()], dec.run(None, feeds)))
+
+    masks = np.asarray(outs.get("pred_masks"), dtype=np.float32)
+    if masks.ndim == 5:
+        masks = masks[0, 0]
+    elif masks.ndim == 4:
+        masks = masks[0]
+    ious = outs.get("iou_scores")
+    flat = np.asarray(ious, dtype=np.float32).reshape(-1) if ious is not None else None
+    best, best_iou = _choose_candidate(masks, flat, pick)
+
+    logits = masks[min(best, len(masks) - 1)]
+    is_logits = float(logits.min()) < 0.0 or float(logits.max()) > 1.0
+    prob = 1.0 / (1.0 + np.exp(-logits)) if is_logits else logits
+
+    low = Image.fromarray((np.clip(prob, 0.0, 1.0) * 255.0).astype(np.uint8), mode="L")
+    padded = low.resize((SIDE, SIDE), Image.BILINEAR)          # 256² -> the 1024 frame
+    nw, nh = max(1, round(w * scale)), max(1, round(h * scale))
+    mask_im = padded.crop((0, 0, nw, nh)).resize((w, h), Image.BILINEAR)
+    return np.asarray(mask_im) > 127, best_iou
+
+
 def segment(im: Image.Image, model_dir: Path, points: list[list[float]],
-            labels: list[float]) -> tuple[np.ndarray, float]:
-    """Return a boolean mask at the original resolution and the decoder's own IoU estimate."""
+            labels: list[float], model: str = "mobilesam",
+            pick: str = "auto") -> tuple[np.ndarray, float]:
+    """Return a boolean mask at the original resolution and the model's own IoU estimate."""
+    if model == "vitb":
+        return _segment_vitb(im, model_dir, points, labels, pick)
     import onnxruntime as ort  # noqa: F401  (imported for the side effect of a clear error message)
 
     enc, dec = _sessions(model_dir)
@@ -148,16 +243,8 @@ def segment(im: Image.Image, model_dir: Path, points: list[list[float]],
     if masks.ndim == 2:
         masks = masks[None, ...]
 
-    best_iou = 0.0
-    if ious is not None:
-        flat = np.asarray(ious, dtype=np.float32).reshape(-1)
-        best = int(np.argmax(flat))
-        best_iou = float(flat[best])
-    else:
-        # No scores published: pick the mask with the largest area, which is what a user asking for
-        # "the object" means in practice.
-        areas = [float((m > 0).mean()) for m in masks]
-        best = int(np.argmax(areas))
+    flat_ious = np.asarray(ious, dtype=np.float32).reshape(-1) if ious is not None else None
+    best, best_iou = _choose_candidate(masks, flat_ious, pick)
 
     logits = masks[min(best, len(masks) - 1)]
     is_logits = float(logits.min()) < 0.0 or float(logits.max()) > 1.0
@@ -196,14 +283,18 @@ def _apply(mode: str, im: Image.Image, mask: np.ndarray, blur: float) -> Image.I
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="MobileSAM mask/cutout on CPU via ONNX Runtime")
-    ap.add_argument("mode", choices=["mask", "cutout", "blur", "overlay"])
+    ap = argparse.ArgumentParser(description="SAM mask/cutout on CPU via ONNX Runtime (MobileSAM ViT-T or ViT-B)")
+    ap.add_argument("mode", choices=["mask", "cutout", "blur", "overlay", "layers"])
     ap.add_argument("--input", required=True)
     ap.add_argument("--output", required=True)
     ap.add_argument("--points", default=None, help="'x,y;x,y' in original pixels (default: centre)")
     ap.add_argument("--labels", default=None, help="'1;0' — 1=object, 0=background")
     ap.add_argument("--blur", type=float, default=24.0, help="background blur radius (blur mode)")
     ap.add_argument("--model-dir", default=None)
+    ap.add_argument("--model", default="mobilesam", choices=sorted(MODELS),
+                    help="mobilesam = ViT-T, ~4x faster; vitb = ViT-B, keeps thin structures")
+    ap.add_argument("--pick", default="auto", choices=["auto", "largest", "smallest"],
+                    help="which of the three masks to keep: auto = best predicted IoU")
     args = ap.parse_args(argv)
 
     src = Path(args.input).expanduser()
@@ -214,7 +305,29 @@ def main(argv: list[str] | None = None) -> int:
 
     im = Image.open(src).convert("RGB")
     points, labels = _parse_points(args.points, args.labels, *im.size)
-    mask, iou = segment(im, _load_model_dir(args.model_dir), points, labels)
+    mask, iou = segment(im, _load_model_dir(args.model_dir, args.model), points, labels,
+                     args.model, args.pick)
+
+    if args.mode == "layers":
+        # Two files from one mask: the subject with its alpha, and the plate it was sitting on.
+        # Nothing is erased here — the background keeps the pixels the subject covered (it is fully
+        # transparent there), so the pair recomposes to the original inside any editor.
+        subject = _apply("cutout", im, mask, 0.0)
+        plate = im.convert("RGBA")
+        plate.putalpha(Image.fromarray(np.where(mask, 0, 255).astype(np.uint8), mode="L"))
+        plate_path = dst.with_name(f"{dst.stem}_bg{dst.suffix}")
+        subject.save(dst, format="PNG", optimize=True)
+        plate.save(plate_path, format="PNG", optimize=True)
+        print(json.dumps({
+            "ok": True, "mode": "layers", "width": im.size[0], "height": im.size[1],
+            "points": points, "labels": labels, "iou": round(iou, 4),
+            "coverage": round(float(mask.mean()), 4), "mask_pixels": int(mask.sum()),
+            "bytes": dst.stat().st_size, "path": str(dst),
+            "extra": [{"path": str(plate_path), "bytes": plate_path.stat().st_size,
+                       "role": "background"}],
+        }))
+        return 0
+
     result = _apply(args.mode, im, mask, max(0.0, args.blur))
     if args.mode == "mask":
         result.save(dst, format="PNG")
