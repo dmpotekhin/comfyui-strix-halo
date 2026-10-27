@@ -27,6 +27,7 @@ from typing import Any
 
 import httpx
 
+from . import modelscan
 from .paths import safe_join
 
 log = logging.getLogger(__name__)
@@ -105,10 +106,11 @@ class DownloadManager:
         return None
 
     def installed(self, folder: str, file: str) -> bool:
-        try:
-            return safe_join(self.models_root, folder, file).is_file()
-        except Exception:  # noqa: BLE001
-            return False
+        # Host-tool weights (whisper ggml, SAM/U2Net ONNX, llama-mtmd gguf) are staged into
+        # studio/tools/<folder>/ by the stage scripts, not into models/ — checking only the
+        # models root called them "not installed" on the catalog page even though they were there.
+        # The models root's parent is the project root those paths are relative to.
+        return modelscan.present(self.models_root.parent, self.models_root, folder, file)
 
     # -- planning ---------------------------------------------------------------------
     def plan(self, model_ids: list[str]) -> Plan:

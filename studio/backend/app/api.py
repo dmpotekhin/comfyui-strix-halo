@@ -25,6 +25,7 @@ import shutil
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote, unquote
 
 from fastapi import Body, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
@@ -37,6 +38,7 @@ from .db import Database
 from .downloads import DownloadManager, DownloadRefused, summarize_size
 from .inventory import MODEL_EXTS, Inventory, analyze
 from .jobs import JobManager, QueueFull
+from .modelscan import canonical_folder, present, scan_host
 from .paths import Layout, PathNotAllowed, safe_join, sanitize_filename
 from .registry import ERROR_CATEGORIES, ParamError, Registry, iter_categories
 from .schemas import HealthOut, JobCreate, ModelFileOut, WorkflowDetail, WorkflowSummary
@@ -329,7 +331,7 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         return state.jobs.job_out(new_job).model_dump()
 
     # -- outputs ----------------------------------------------------------------------
-    @app.get("/api/outputs/{filename}")
+    @app.get("/api/outputs/{filename:path}")
     async def get_output(
         filename: str,
         subfolder: str = "",
@@ -339,7 +341,16 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         root = {"output": layout.comfy_output, "input": layout.comfy_input}.get(type)
         if root is None:
             raise HTTPException(400, "type must be 'output' or 'input'")
-        path = safe_join(root, subfolder, filename)
+        # A workflow can write into a subdirectory of the output folder (per-batch dirs, frame
+        # folders), and the gallery hands that name over with the separator URL-encoded:
+        # /api/outputs/frames__s5_v25_set001%2Fframe_0001.png. The server decodes %2F before
+        # routing, so a plain ``{filename}`` never matched and every nested output 404'd even
+        # though the file was on disk. ``:path`` lets the separator through; unquote() covers a
+        # client that encodes it twice. safe_join still refuses anything escaping the root.
+        try:
+            path = safe_join(root, unquote(subfolder), unquote(filename))
+        except PathNotAllowed:
+            raise HTTPException(404, "file not found") from None
         if not path.is_file():
             raise HTTPException(404, "file not found")
         media = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
@@ -359,7 +370,10 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         rows = state.db.list_outputs(limit=limit, offset=offset, workflow_id=workflow_id,
                                     kind=kind, since=since)
         for r in rows:
-            r["url"] = f"/api/outputs/{r['filename']}?type={r['type']}&subfolder={r['subfolder']}"
+            # Quote every segment: a nested output name contains '/', and a name with '#' or '?'
+            # would otherwise truncate the URL at the query string.
+            r["url"] = (f"/api/outputs/{quote(r['filename'], safe='')}"
+                        f"?type={quote(str(r['type']))}&subfolder={quote(str(r['subfolder']))}")
             wf = state.registry.defs.get(r["workflow_id"])
             r["workflow_name"] = wf.name if wf else r["workflow_id"]
         return {"outputs": rows, "total": state.db.count_outputs()}
@@ -419,13 +433,14 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         usage: dict[tuple[str, str], list[str]] = {}
         for wf in state.registry.defs.values():
             for ref in wf.models:
-                usage.setdefault((ref.folder, ref.file), []).append(wf.id)
+                usage.setdefault((canonical_folder(layout.root, ref.folder), ref.file), []).append(wf.id)
             rep = state.registry.report(wf)
             for ref in rep.present_models:
-                usage.setdefault((ref.folder, ref.file), []).append(wf.id)
+                usage.setdefault((canonical_folder(layout.root, ref.folder), ref.file), []).append(wf.id)
 
         catalog_by_key = {(c.get("folder"), c.get("file")): c for c in state.downloads.catalog()}
         files: list[ModelFileOut] = []
+        listed: set[tuple[str, str]] = set()
         for folder, names in sorted(inv.folders.items()):
             for name in names:
                 # Model folders also hold SD config yamls; they are files, not models. Listing
@@ -433,6 +448,7 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
                 if not name.lower().endswith(MODEL_EXTS):
                     continue
                 cat = catalog_by_key.get((folder, name), {})
+                listed.add((folder, name))
                 files.append(ModelFileOut(
                     folder=folder,
                     file=name,
@@ -443,13 +459,43 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
                     purpose=cat.get("purpose"),
                     used_by=sorted(set(usage.get((folder, name), []))),
                 ))
-        dupes = sorted({k[1] for k in usage if not inv.has(*k)})
+        # Host-tool weights (whisper ggml, ONNX SAM/U2Net, llama-mtmd gguf) sit in studio/tools/,
+        # which ComfyUI's mount does not include and the disk walk above therefore cannot see.
+        # Merging them keeps the Model Manager honest: without this it listed 12 of the 19 catalog
+        # models and called an installed ggml file "missing".
+        host_scan = scan_host(layout.root)
+        for folder, names in sorted(host_scan.items()):
+            for name, size in sorted(names.items()):
+                if (folder, name) in listed:
+                    continue
+                cat = catalog_by_key.get((folder, name), {})
+                listed.add((folder, name))
+                files.append(ModelFileOut(
+                    folder=folder,
+                    file=name,
+                    size_bytes=size,
+                    status="installed",
+                    license=cat.get("license"),
+                    source=cat.get("source") or cat.get("url"),
+                    purpose=cat.get("purpose"),
+                    used_by=sorted(set(usage.get((folder, name), []))),
+                ))
+        folders_out = {f: len(n) for f, n in sorted(inv.folders.items())}
+        for folder, names in host_scan.items():
+            folders_out[folder] = len(names)
+        total_bytes = inv.total_bytes() + sum(sum(n.values()) for n in host_scan.values())
+        file_count = inv.file_count() + sum(len(n) for n in host_scan.values())
+        # A ref is missing only when neither tree has the file.
+        dupes = sorted({
+            k[1] for k in usage
+            if not (inv.has(*k) or present(layout.root, layout.comfy_models, *k))
+        })
         return {
             "models": [m.model_dump() for m in files],
-            "folders": {f: len(n) for f, n in sorted(inv.folders.items())},
-            "total_bytes": inv.total_bytes(),
-            "total_gb": round(inv.total_bytes() / GB, 2),
-            "file_count": inv.file_count(),
+            "folders": folders_out,
+            "total_bytes": total_bytes,
+            "total_gb": round(total_bytes / GB, 2),
+            "file_count": file_count,
             "missing_referenced": dupes,
             "empty_folders": sorted(
                 p.name for p in layout.comfy_models.iterdir()

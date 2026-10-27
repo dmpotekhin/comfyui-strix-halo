@@ -1,4 +1,4 @@
-# Implementation status — **RELEASE CANDIDATE** (127 workflows, 192 tests)
+# Implementation status — **RELEASE CANDIDATE** (127 workflows, 199 tests)
 
 Date: 2026-10-27. Project closed as a release candidate: the capability list, the hardware profile and
 the run instructions are in `docs/PROJECT_SUMMARY.md`; the limitations table below is the authoritative
@@ -16,7 +16,7 @@ Read this together with `docs/stage5_status.md`, `docs/stage_s_proposal.md`, `do
 
 | Item | Evidence |
 |---|---|
-| Test suite | `pytest backend/tests -q` → **192 passed, 0 failed**, 85 warnings in 8.7 s |
+| Test suite | `pytest backend/tests -q` → **199 passed, 0 failed**, 113 warnings in 9.4 s |
 | Service | `./studio/start.sh` → `http://127.0.0.1:8000`, `/api/health` → `comfy_connected: true` |
 | Engine | ComfyUI **0.15.0**, torch **2.9.1+rocm7.2.0**, device `cuda:0 AMD Radeon Graphics`, 675 node classes |
 | Registry | **127 workflows** served: 40 graph, 82 host, 5 chain — all dependencies resolve |
@@ -50,6 +50,9 @@ Read this together with `docs/stage5_status.md`, `docs/stage_s_proposal.md`, `do
 | Dead-audio guard (new) | every audio output carries `loudness {mean_db, max_db, silent}`; a dead track also writes a `warning` event (verified live on a known-bad prompt) |
 | Docs generation | `tools/gen_registry_docs.py` → dependency matrix + catalog regenerated from the live engine |
 | Catalog plan | `tools/gen_catalog_plan.py` → **107 entries**, 19 READY / 36 VALIDATED / 34 NEEDS_MODELS / 13 NEEDS_NODES / 2 EXPERIMENTAL / 3 UNAVAILABLE |
+| Nested output delivery (fixed 2026-10-27) | `GET /api/outputs/frames__s5_v25_set001%2Fframe_0001.png?type=output&subfolder=studio` → **200, 24,035 B, sha256 `de51cdef…6f8e`** = the bytes on disk; gallery loads **73 images, 0 broken** in the browser, one of them a `%2F` URL |
+| Visual audit re-run (2026-10-27) | `visual-app-audit` against the fixed studio → **6 pages / 15 screenshots / 1 error / 24 warnings**, was 3 errors; the one remaining error is the Queue banner for the historical failed job `44244288`, which is the app reporting a real past failure, not a defect. The 24 warnings are `net::ERR_ABORTED` on gallery media previews (the browser cancelling prefetches) |
+| Model visibility (fixed 2026-10-27) | `/api/models` → **23 installed files / 50.54 GB** (12 ComfyUI + 11 host-tool, `total_bytes` equal to the sum of the rows) and `missing_referenced: []`; 10 of the 11 host rows carry a non-empty `used_by`; `/api/models/catalog` → **19/19 installed**, including the seven host-tool rows that used to read "not installed" |
 
 ## Added — Stage T (SAM ViT-B + Moondream2)
 
@@ -208,6 +211,8 @@ withheld, so it is out of this release on purpose. **WONTFIX** = deliberately no
 | 16 | SAM ViT-B with `pick=auto` can return a **sub-part** instead of the object | KNOWN LIMITATION | Measured: one centre click on the raccoon gave 743 px (0.07 %) at `auto` vs 103,440 px (9.86 %) at `largest`. This is SAM's own ranking, not a wiring bug, so the SAM workflows default to `pick=largest`; `auto` and `smallest` stay available. |
 | 17 | `sam-region-restyle` leaves a thin bright rim at the mask boundary | KNOWN LIMITATION | VAE 8× downsampling quantises the mask edge, so a few background pixels are repainted. `denoise 0.8 / steps 10 / grow_mask_by 2` keeps the subject and a thin rim; `denoise 0.55` removes the rim but collapses the subject into a silhouette. Removing it properly needs a composite-back step (not in scope). |
 | 18 | Moondream2 has **no OCR** and invents props | KNOWN LIMITATION | Measured: "glasses and a hat", "a bat in its paws", a "striped umbrella" on a cartoon raccoon; on a screenshot it says text exists but returns fragments, not a transcript. Use the `vlm-*` workflows to describe, never to extract. `vlm-read-text` / `vlm-translate-text` are honest placeholders for a stronger VLM. |
+| 19 | **Nested outputs 404'd** — the gallery could not load a file written into a subdirectory of `output/` | **FIXED 2026-10-27** | The route was `/api/outputs/{filename}`, a single segment, while the gallery URL-encodes the separator (`frames__s5_v25_set001%2Fframe_0001.png`); the server decodes `%2F` before routing, so the route never matched and the file 404'd although it was on disk. Now `{filename:path}` + `unquote()`, with the `safe_join` containment guard unchanged, and gallery URLs quote every segment. Verified: 200 / 24,035 B / matching sha256, 73 gallery images with 0 broken. Tests: `test_nested_output_served_from_an_encoded_separator`, `…raw_separator`, `test_output_path_traversal_is_refused`. |
+| 20 | **Host-tool models were invisible** — `/api/models` walked only ComfyUI's folders, so the Model Manager listed 12 of the 19 catalog models and called an installed ggml file "missing" | **FIXED 2026-10-27** | whisper ggml, SAM/U2Net ONNX and llama-mtmd gguf live in `studio/tools/<folder>/`, outside ComfyUI's bind mount; the registry and the catalog both name that folder bare. The mapping now lives once in `app/modelscan.py` and is used by `/api/models`, `missing_referenced` and the download manager's `installed()` (which also reported the catalog page as not installed). Registry defs spell the same folder two ways (`host:studio/tools/vision-models` in 35 model blocks, bare in the catalog), so usage is keyed on the bare name only when that name is a scanned folder — otherwise a ref to `studio/assets/voices` (Piper) would be renamed into a folder nothing scans and flip to "missing". Verified: 23 files / 50.54 GB, `missing_referenced: []`, catalog 19/19 installed, `used_by` filled for SAM/VLM/whisper. Tests: `test_models_include_host_tool_weights`, `test_workflow_referencing_a_host_tool_model_is_not_reported_missing`, `test_weight_outside_the_model_trees_is_not_called_missing`, `test_catalog_page_marks_host_tool_models_installed`. |
 
 ## Not a limitation, by design
 
@@ -229,7 +234,7 @@ budget on a risk that may end in a non-working workflow.
 ```bash
 cd /home/dmitry/workspace/comfyui-strix-halo
 ./studio/start.sh                                   # app on http://127.0.0.1:8000
-cd studio && ./.venv/bin/python -m pytest backend/tests -q                    # 192 tests
+cd studio && ./.venv/bin/python -m pytest backend/tests -q                    # 199 tests
 cd studio && ./.venv/bin/python tools/gen_registry_docs.py    # refresh generated docs
 cd studio && ./.venv/bin/python tools/gen_catalog_plan.py     # refresh the 107-entry plan
 cd .. && studio/.venv/bin/python studio/tools/smoke_run.py <workflow-id>   # one real run
