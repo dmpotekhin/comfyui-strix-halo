@@ -20,7 +20,7 @@
 
 ## Инфраструктура студии (обновлено 28.10, ночь)
 
-Студия выросла до **127 workflow** (40 graph / 82 host / 5 chain, `199 passed`): после Stage S
+Студия выросла до **127 workflow** (40 graph / 82 host / 5 chain, `200 passed`): после Stage S
 (MobileSAM, RealESRGAN x4plus, whisper large-v3) добавлен **Stage T** — SAM ViT-B и Moondream2,
 3.84 GiB, все четыре файла сверены по sha256 с каталогом. Витрина моделей: 19 записей, host-инструментов 34.
 Замеры и честные вердикты — `docs/stage_t_status.md`.

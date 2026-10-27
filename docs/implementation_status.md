@@ -1,4 +1,4 @@
-# Implementation status — **RELEASE CANDIDATE** (127 workflows, 199 tests)
+# Implementation status — **RELEASE CANDIDATE** (127 workflows, 200 tests)
 
 Date: 2026-10-27. Project closed as a release candidate: the capability list, the hardware profile and
 the run instructions are in `docs/PROJECT_SUMMARY.md`; the limitations table below is the authoritative
@@ -16,7 +16,7 @@ Read this together with `docs/stage5_status.md`, `docs/stage_s_proposal.md`, `do
 
 | Item | Evidence |
 |---|---|
-| Test suite | `pytest backend/tests -q` → **199 passed, 0 failed**, 113 warnings in 9.4 s |
+| Test suite | `pytest backend/tests -q` → **200 passed, 0 failed**, 117 warnings in 9.1 s |
 | Service | `./studio/start.sh` → `http://127.0.0.1:8000`, `/api/health` → `comfy_connected: true` |
 | Engine | ComfyUI **0.15.0**, torch **2.9.1+rocm7.2.0**, device `cuda:0 AMD Radeon Graphics`, 675 node classes |
 | Registry | **127 workflows** served: 40 graph, 82 host, 5 chain — all dependencies resolve |
@@ -234,7 +234,7 @@ budget on a risk that may end in a non-working workflow.
 ```bash
 cd /home/dmitry/workspace/comfyui-strix-halo
 ./studio/start.sh                                   # app on http://127.0.0.1:8000
-cd studio && ./.venv/bin/python -m pytest backend/tests -q                    # 199 tests
+cd studio && ./.venv/bin/python -m pytest backend/tests -q                    # 200 tests
 cd studio && ./.venv/bin/python tools/gen_registry_docs.py    # refresh generated docs
 cd studio && ./.venv/bin/python tools/gen_catalog_plan.py     # refresh the 107-entry plan
 cd .. && studio/.venv/bin/python studio/tools/smoke_run.py <workflow-id>   # one real run

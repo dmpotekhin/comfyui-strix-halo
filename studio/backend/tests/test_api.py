@@ -129,6 +129,21 @@ def test_models_include_host_tool_weights(client, project):
     assert body["total_bytes"] == 4096 + 2048
 
 
+def test_stats_model_count_matches_the_model_list(client, project):
+    """The sidebar badge reads stats.models.files, so it has to count the same things the page
+    behind it lists. It used to report the ComfyUI folder count — "Models 12" pointing at 23 rows.
+    """
+    host = project.layout.studio / "tools" / "whisper-models"
+    host.mkdir(parents=True)
+    (host / "ggml-large-v3-q5_0.bin").write_bytes(b"\0" * 2048)
+
+    stats = client.get("/api/stats").json()
+    models = client.get("/api/models").json()
+    assert stats["models"]["files"] == models["file_count"] == len(models["models"]) == 2
+    assert stats["models"]["folders"] == len(models["folders"]) == 2
+    assert stats["models"]["total_bytes"] == models["total_bytes"] == 4096 + 2048
+
+
 def test_workflow_referencing_a_host_tool_model_is_not_reported_missing(client, project):
     """The symptom from the visual audit: missing_referenced held an installed ggml file.
 

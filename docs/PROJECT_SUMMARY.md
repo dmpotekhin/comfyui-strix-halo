@@ -17,7 +17,7 @@ generation 27, image generation 20, image enhancement 9, vision & language 9, ch
 | `chain` | 5 | multi-step: host tool produces a mask/map, a graph consumes it |
 
 Supporting scope: **34 host tools**, **19 catalogued models** (every one with a verified sha256),
-**199 tests** passing in ~9.4 s, generated `workflow_catalog.md` / `model_dependency_matrix.csv`, and
+**200 tests** passing in ~9.1 s, generated `workflow_catalog.md` / `model_dependency_matrix.csv`, and
 `studio/registry/models_catalog.json` as the single source of truth for weights.
 
 Capability highlights that were run for real, not just wired up: SDXL/turbo text-to-image and

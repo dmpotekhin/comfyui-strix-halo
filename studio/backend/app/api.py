@@ -47,6 +47,25 @@ log = logging.getLogger(__name__)
 GB = 1024**3
 
 
+def model_totals(inv: Inventory, root: Path) -> dict[str, Any]:
+    """Files, folders and bytes across both model trees — ComfyUI's and the host tools'.
+
+    Every place that counts models has to agree, or the sidebar badge ("Models 12") contradicts
+    the page it links to (23 rows). Model folders also hold SD config yamls; the inventory walk
+    already filters those out by extension, and so does ``scan_host``.
+    """
+    host = scan_host(root)
+    folders = {f: len(n) for f, n in sorted(inv.folders.items())}
+    for folder, names in sorted(host.items()):
+        folders[folder] = len(names)
+    return {
+        "files": inv.file_count() + sum(len(n) for n in host.values()),
+        "folders": len(folders),
+        "folders_detail": folders,
+        "total_bytes": inv.total_bytes() + sum(sum(n.values()) for n in host.values()),
+    }
+
+
 class AppState:
     """Everything the routes need, built once at startup."""
 
@@ -185,14 +204,16 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         except ComfyError:
             pass
         du = shutil.disk_usage(layout.root)
+        totals = model_totals(inv, layout.root)
         return {
             "workflows": wstats,
             "categories": iter_categories(),
+            # the sidebar badge reads models.files, and it must match the list on /api/models
             "models": {
-                "files": inv.file_count(),
-                "folders": len(inv.folders),
-                "total_bytes": inv.total_bytes(),
-                "total_gb": round(inv.total_bytes() / GB, 2),
+                "files": totals["files"],
+                "folders": totals["folders"],
+                "total_bytes": totals["total_bytes"],
+                "total_gb": round(totals["total_bytes"] / GB, 2),
             },
             "outputs": {"count": state.db.count_outputs()},
             "jobs": {
@@ -480,11 +501,10 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
                     purpose=cat.get("purpose"),
                     used_by=sorted(set(usage.get((folder, name), []))),
                 ))
-        folders_out = {f: len(n) for f, n in sorted(inv.folders.items())}
-        for folder, names in host_scan.items():
-            folders_out[folder] = len(names)
-        total_bytes = inv.total_bytes() + sum(sum(n.values()) for n in host_scan.values())
-        file_count = inv.file_count() + sum(len(n) for n in host_scan.values())
+        totals = model_totals(inv, layout.root)
+        folders_out = totals["folders_detail"]
+        total_bytes = totals["total_bytes"]
+        file_count = totals["files"]
         # A ref is missing only when neither tree has the file.
         dupes = sorted({
             k[1] for k in usage
