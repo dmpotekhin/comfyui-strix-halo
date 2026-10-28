@@ -34,6 +34,7 @@ import gzip
 import json
 import os
 import random
+import re
 import secrets
 import socket
 import struct
@@ -235,7 +236,7 @@ def main() -> int:
     # one worth testing — a plain curl without Accept-Encoding would pass while a real
     # family browser still broke.
     marker = b"comfyui-lan-uuid-polyfill"
-    status, headers, body = request("/", auth=good, headers={"Accept-Encoding": "identity"})
+    status, ident_headers, body = request("/", auth=good, headers={"Accept-Encoding": "identity"})
     head_at, poly_at, module_at = (body.find(b"<head>"), body.find(marker),
                                    body.find(b'<script type="module"'))
     ordered = 0 <= head_at < poly_at < module_at
@@ -249,6 +250,36 @@ def main() -> int:
     ok = status == 200 and marker in decoded
     check("polyfill survives the compressed path browsers use", PASS if ok else FAIL,
           f"content-encoding={encoding or 'none'}, {len(body)} on the wire -> {len(decoded)} decoded")
+
+    # 3c: the rewrite must not lose to a cached copy --------------------------------------
+    # ComfyUI sends `Cache-Control: no-cache` with an ETag/Last-Modified describing the HTML
+    # BEFORE the substitution. A device that loaded the page before the polyfill existed
+    # would revalidate, get 304 with no body, and keep rendering its broken cached copy — so
+    # the fix would look ignored on exactly the machines that had already tried it. The index
+    # document therefore carries no validators, and conditional requests cannot reach ComfyUI.
+    stale = [n for n in ("Etag", "Last-Modified") if header(ident_headers, n)]
+    check("rewritten index carries no stale validators", PASS if not stale else FAIL,
+          f"still present: {', '.join(stale)}" if stale else "neither ETag nor Last-Modified")
+
+    status, _, body = request("/", auth=good,
+                              headers={"If-None-Match": '"etag-from-before-the-fix"'})
+    ok = status == 200 and marker in body
+    check("a conditional request cannot get a polyfill-less 304", PASS if ok else FAIL,
+          f"{status}, {len(body)} bytes")
+
+    # ...but the JS bundle must keep its cache, or every reload refetches megabytes.
+    match = re.search(b'src="\\./(assets/[^"]+\\.js)"', body)
+    if match:
+        asset = "/" + match.group(1).decode()
+        status, asset_headers, _ = request(asset, auth=good)
+        etag = header(asset_headers, "Etag")
+        ok = status == 200 and bool(etag)
+        detail = f"{asset}: {status}, Etag={'yes' if etag else 'no'}"
+        if ok:
+            again, _, _ = request(asset, auth=good, headers={"If-None-Match": etag})
+            ok = again == 304
+            detail += f", conditional revalidate -> {again}"
+        check("static assets keep their cache validators", PASS if ok else FAIL, detail)
 
     # 4: WebSocket ------------------------------------------------------------------------
     status, _, sock = ws_handshake(None)

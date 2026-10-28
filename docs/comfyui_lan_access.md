@@ -82,7 +82,7 @@ isolate anything inside ComfyUI — see §5.
 | Rendered Caddyfile | `~/.config/comfyui-caddy/Caddyfile` | 0600, hashes only |
 | Credentials | `~/.config/comfyui-caddy/users.json` | 0600, plaintext, never committed |
 | Render/rotate tool | `deploy/caddy/lan_access.py` | see §2 |
-| Verification | `deploy/caddy/verify_lan_access.py` | 15 live checks, stats |
+| Verification | `deploy/caddy/verify_lan_access.py` | 18 live checks, stats |
 | systemd unit | `deploy/systemd/comfyui-caddy.service` → `~/.config/systemd/user/` | user unit; `Linger=yes` starts it at boot |
 | Firewall | `deploy/lan8189-enable.sh` | the only part that needs root |
 | Access log | `~/.local/share/comfyui-caddy/access.log` | 10 MiB × 5, includes 401 attempts |
@@ -198,6 +198,14 @@ implementation into `<head>` using the `replace` directive:
   runs. Without that line the polyfill appears for a bare `curl` and silently vanishes for
   every real browser — which is why the verifier tests the gzip path a browser actually uses,
   not just the plain one.
+* the rewrite must not lose to a cached copy. ComfyUI serves its HTML with
+  `Cache-Control: no-cache` plus an ETag and Last-Modified that describe the file *before* the
+  substitution. A device that had loaded the page before this fix would revalidate, receive
+  `304` with no body, and keep rendering its broken cached copy — the fix would look ignored
+  on precisely the machines that needed it. So the index document loses both validators, and
+  `If-None-Match`/`If-Modified-Since` are stripped on the way upstream (otherwise ComfyUI
+  answers `304` itself). Only `/` and `/index.html` are affected: asset validators stay, and a
+  conditional request for a JS bundle still returns `304`.
 
 Verified in a real Chromium over the LAN as the `family` account: `crypto.randomUUID` is a
 function returning unique valid v4 UUIDs, zero page errors, ComfyUI opens
@@ -245,11 +253,12 @@ firewall/bind state):
 
     python3 deploy/caddy/verify_lan_access.py
 
-Last run: **15/15 passed** (14 executed, 1 skipped for root) — 401 challenge, wrong password
+Last run: **18/18 passed** (17 executed, 1 skipped for root) — 401 challenge, wrong password
 rejected, 200 + system_stats, ComfyUI HTML, the `randomUUID` polyfill present ahead of
-ComfyUI's module script and surviving gzip, WebSocket 101 with `status` frame, prompt
-submitted through the proxy, image produced and downloaded back through it, 8188 unreachable
-on the LAN IP, 8189 bound to `192.168.31.60` only.
+ComfyUI's module script and intact through gzip, no stale validators on the rewritten index,
+a conditional request unable to get a polyfill-less `304`, asset caching still working,
+WebSocket 101 with `status` frame, prompt submitted through the proxy, image produced and
+downloaded back through it, 8188 unreachable on the LAN IP, 8189 bound to `192.168.31.60` only.
 
 Separately, in a real Chromium over the LAN: `crypto.randomUUID` works, no page errors, the
 app's own socket opens, a queued job pushes live queue updates, and the PNG comes back through
@@ -264,6 +273,7 @@ upstream `127.0.0.1:8188` too — they are ComfyUI's own, not the proxy's.
 | UI loads, queue never updates | WebSocket blocked between that device and the laptop (guest-Wi-Fi client isolation, mesh AP isolation). Verification: `python3 deploy/caddy/verify_lan_access.py` on this machine — if the WS check passes here, the problem is the network path |
 | Login dialog appears on every single request | The device is sending requests to two different origins (e.g. one via IP, one via hostname) |
 | Everything stopped after a reboot | `systemctl --user status comfyui-caddy`, `loginctl show-user dmitry \| grep Linger`, `journalctl --user -u comfyui-caddy -n 50` |
+| It worked for me but not on her laptop | That device is probably still showing the page it cached before the fix. The index document deliberately carries no validators now, so a normal reload (F5) must fetch fresh HTML — if it still fails, check `document.documentElement.innerHTML.includes('comfyui-lan-uuid-polyfill')` in the console, then `Ctrl+Shift+R` |
 | Who tried to get in? | `grep 401 ~/.local/share/comfyui-caddy/access.log` |
 | UI paints but nothing works; console: `crypto.randomUUID is not a function` | The polyfill block is missing or not reaching the browser. `grep -c comfyui-lan-uuid-polyfill ~/.config/comfyui-caddy/Caddyfile` (expect ≥1), then `grep -c 'header_up Accept-Encoding identity' ...` (expect 1 — without it `encode` hides the HTML from `replace`), then `python3 deploy/caddy/lan_access.py render` and reload the page hard |
 | `unrecognized directive: replace` on reload | The running Caddy binary has no `replace-response` module. `~/.local/bin/caddy list-modules \| grep replace` — if empty, install the custom build (§3) and `systemctl --user restart comfyui-caddy`; a hot reload cannot add a module to a running process |

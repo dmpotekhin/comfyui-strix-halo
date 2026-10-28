@@ -208,6 +208,19 @@ def test_template_keeps_upstream_html_uncompressed_for_the_replacer():
     assert "header_up Accept-Encoding identity" in TEMPLATE.read_text()
 
 
+def test_template_keeps_the_rewritten_index_out_of_caches():
+    # ComfyUI's validators describe the HTML before the substitution. A device that cached the
+    # page pre-fix would revalidate, get 304 with no body and keep its broken copy, so the fix
+    # would look ignored exactly where it is needed. Index loses its validators; assets keep them.
+    text = TEMPLATE.read_text()
+    assert "request_header @index_document -If-None-Match" in text
+    assert "request_header @index_document -If-Modified-Since" in text
+    # One field per line: Caddy parses a second argument on a deletion line as its value, so
+    # `-Etag -Last-Modified` silently drops only the first.
+    assert "header @index_document -Etag\n" in text
+    assert "header @index_document -Last-Modified\n" in text
+
+
 def test_template_polyfill_does_not_break_caddyfile_quoting():
     line = next(l for l in TEMPLATE.read_text().splitlines() if "comfyui-lan-uuid-polyfill" in l)
     # Search and replacement sit inside one double-quoted Caddyfile argument; a stray " in

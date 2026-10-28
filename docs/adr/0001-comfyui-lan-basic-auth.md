@@ -109,6 +109,10 @@ Consequences:
   body, and `encode` would compress the proxied HTML first; without it the polyfill would work
   for `curl` and silently vanish for every browser. The verifier therefore tests the gzip path.
 * Only `text/html` responses are touched, and only by that one substitution.
+* The rewritten index must not be revalidatable: ComfyUI's ETag/Last-Modified describe the
+  HTML *before* the substitution, so a cached pre-fix page would answer `304` and keep
+  rendering the broken copy. `/` and `/index.html` therefore lose their validators and
+  inbound conditional headers are stripped; assets keep both, so JS still returns `304`.
 * This is a targeted stopgap, not a general cure for insecure contexts: `crypto.subtle`,
   `navigator.clipboard` and service workers stay unavailable. If the UI ever needs one of them,
   the answer is HTTPS, not another polyfill — and this amendment is the thing to revisit.

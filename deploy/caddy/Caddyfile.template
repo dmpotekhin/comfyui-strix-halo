@@ -58,6 +58,21 @@ http://192.168.31.60:8189 {
 		"<head>" "<head><script>/*comfyui-lan-uuid-polyfill*/if(!(window.crypto&&window.crypto.randomUUID)){var c=window.crypto;if(c&&c.getRandomValues){var f=function(){var b=new Uint8Array(16);c.getRandomValues(b);b[6]=(b[6]&15)|64;b[8]=(b[8]&63)|128;var h=Array.prototype.map.call(b,function(x){return('0'+x.toString(16)).slice(-2)}).join('');return h.slice(0,8)+'-'+h.slice(8,12)+'-'+h.slice(12,16)+'-'+h.slice(16,20)+'-'+h.slice(20)};try{c.randomUUID=f}catch(e){Object.defineProperty(c,'randomUUID',{value:f,configurable:true,writable:true})}}}</script>"
 	}
 
+	# A rewritten body must not meet a cached copy. ComfyUI sends `Cache-Control: no-cache`
+	# plus an ETag/Last-Modified that describe the file *before* the substitution above, so a
+	# browser holding the pre-polyfill page would revalidate, get 304 with no body, and keep
+	# rendering its broken cached copy — the fix would look ignored on exactly the devices
+	# that had already tried the page. Validators are therefore dropped for the index document
+	# only (assets keep theirs, so JS and images still cache normally), and conditional
+	# requests toward ComfyUI are dropped too: without that the upstream answers 304 itself.
+	# One field per line — Caddy reads a second argument on a deletion line as its value, so
+	# `-Etag -Last-Modified` would quietly delete only the first.
+	@index_document path / /index.html
+	request_header @index_document -If-None-Match
+	request_header @index_document -If-Modified-Since
+	header @index_document -Etag
+	header @index_document -Last-Modified
+
 	# ── The one upstream ─────────────────────────────────────────────────────────
 	reverse_proxy 127.0.0.1:8188 {
 		# ComfyUI pushes queue/progress over a long-lived WebSocket at /ws.
