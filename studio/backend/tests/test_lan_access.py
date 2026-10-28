@@ -177,3 +177,40 @@ def test_credentials_file_is_private(lan):
     assert (lan.USERS_FILE.stat().st_mode & 0o777) == 0o600
     lan.render()
     assert (lan.CADDYFILE.stat().st_mode & 0o777) == 0o600
+
+
+# ── the plain-HTTP polyfill ─────────────────────────────────────────────────────────────
+# ComfyUI builds its client id with crypto.randomUUID(), which browsers expose only in a
+# secure context. http://192.168.31.60:8189 is not one, so the app throws
+# "crypto.randomUUID is not a function" and never opens its queue socket — the graph paints,
+# nothing updates. Caddy injects a polyfill into <head>. These tests guard the shape of that
+# injection on the real template, because the failure mode is silent.
+
+TEMPLATE = Path(__file__).resolve().parents[3] / "deploy/caddy/Caddyfile.template"
+
+
+def test_template_injects_the_randomuuid_polyfill_into_html_only():
+    text = TEMPLATE.read_text()
+    assert "replace {" in text
+    assert "comfyui-lan-uuid-polyfill" in text
+    # Right after <head>, so it runs before ComfyUI's deferred module script.
+    assert '"<head>" "<head><script>' in text
+    # HTML only: matching every content type would try to rewrite images and JS bundles.
+    assert "header Content-Type text/html*" in text
+    # Only fills the gap — in a secure context the native implementation must win.
+    assert "if(!(window.crypto&&window.crypto.randomUUID))" in text
+
+
+def test_template_keeps_upstream_html_uncompressed_for_the_replacer():
+    # The replace module cannot look inside a compressed body, and `encode` would compress
+    # the proxied HTML before it gets there — the polyfill would vanish for every browser
+    # while still showing up for a bare curl.
+    assert "header_up Accept-Encoding identity" in TEMPLATE.read_text()
+
+
+def test_template_polyfill_does_not_break_caddyfile_quoting():
+    line = next(l for l in TEMPLATE.read_text().splitlines() if "comfyui-lan-uuid-polyfill" in l)
+    # Search and replacement sit inside one double-quoted Caddyfile argument; a stray " in
+    # the JavaScript would end the argument early and take the whole config with it.
+    assert line.count('"') == 4
+

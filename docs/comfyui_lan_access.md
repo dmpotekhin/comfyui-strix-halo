@@ -76,12 +76,13 @@ isolate anything inside ComfyUI — see §5.
 
 | Piece | Location | Note |
 |---|---|---|
-| Caddy binary | `~/.local/bin/caddy` (v2.10.2, upstream build) | no system package, no root needed to update |
+| Caddy binary | `~/.local/bin/caddy` (v2.11.7, custom build with `replace-response`) | no system package, no root needed to update |
+| Known-good fallback | `~/.local/bin/caddy.v2.10.2-known-good` | stock build, kept for recovery: the door works, the polyfill does not (§7) |
 | Caddyfile template | `deploy/caddy/Caddyfile.template` | in the repo, no secrets |
 | Rendered Caddyfile | `~/.config/comfyui-caddy/Caddyfile` | 0600, hashes only |
 | Credentials | `~/.config/comfyui-caddy/users.json` | 0600, plaintext, never committed |
 | Render/rotate tool | `deploy/caddy/lan_access.py` | see §2 |
-| Verification | `deploy/caddy/verify_lan_access.py` | 13 live checks, stats |
+| Verification | `deploy/caddy/verify_lan_access.py` | 15 live checks, stats |
 | systemd unit | `deploy/systemd/comfyui-caddy.service` → `~/.config/systemd/user/` | user unit; `Linger=yes` starts it at boot |
 | Firewall | `deploy/lan8189-enable.sh` | the only part that needs root |
 | Access log | `~/.local/share/comfyui-caddy/access.log` | 10 MiB × 5, includes 401 attempts |
@@ -104,6 +105,17 @@ Key Caddyfile decisions (each one is commented in the file itself):
   `192.168.31.60:8189`, the same origin the browser used.
 * WebSocket needs no extra configuration in Caddy: the upgrade is proxied as-is. This is
   verified by an actual RFC 6455 handshake in `verify_lan_access.py`, not assumed.
+* `replace` (module `github.com/caddyserver/replace-response`) injects the
+  `crypto.randomUUID` polyfill into ComfyUI's HTML. This is the one directive that needs a
+  non-stock Caddy binary; the whole story, including why it must run before `encode` sees the
+  body, is in §5. Rebuild the binary with:
+
+      curl -fsSL 'https://caddyserver.com/api/download?os=linux&arch=amd64&p=github.com/caddyserver/replace-response' -o caddy
+
+  The build service ignores a `version=` pin, so this yields the current release — validate
+  before letting it near family traffic. Do not use `caddy add-package` here: it swaps the
+  binary in place and an interrupted download leaves a truncated file that segfaults, while
+  the already-running process keeps serving so nothing looks wrong until the next restart.
 
 ## 4. Firewall
 
@@ -161,6 +173,43 @@ in it. If the LAN subnet ever changes (new router), pass `LAN_SUBNET=... LAN_IP=
 7. **Everyone shares one GPU queue.** Family generations and Studio generations land in the
    same ComfyUI queue; a 27-minute video will make someone else's image wait.
 
+### The one thing plain HTTP broke: `crypto.randomUUID` — and the fix
+
+ComfyUI's frontend builds its client id with `crypto.randomUUID()`. By specification that
+method exists **only in a secure context** — HTTPS or `localhost` — and
+`http://192.168.31.60:8189` is neither. Measured here before the fix: `isSecureContext: false`,
+`typeof crypto.randomUUID === "undefined"`, and calling it threw
+`TypeError: crypto.randomUUID is not a function`.
+
+What that looked like to a user: the graph and the sidebar painted (they are drawn before the
+API client is constructed), then nothing worked — no queue updates, no generation. A confusing
+half-broken page, and nothing in the Caddy log, because the failure is entirely browser-side.
+
+`crypto.getRandomValues()` *is* available on plain HTTP, so Caddy injects a small RFC 4122 v4
+implementation into `<head>` using the `replace` directive:
+
+* it is a **classic inline script** placed immediately after `<head>`, so it executes before
+  ComfyUI's `<script type="module">` (module scripts are deferred, inline ones are not);
+* it only fills the gap — `if(!window.crypto.randomUUID)` — so on HTTPS or `localhost` the
+  native implementation wins and this becomes dead weight, not a behaviour change;
+* it matches `Content-Type text/html*` only: images and JS bundles are never rewritten;
+* `header_up Accept-Encoding identity` is load-bearing. The replace module **cannot see inside
+  a compressed body**, and `encode` would compress ComfyUI's HTML before the substitution
+  runs. Without that line the polyfill appears for a bare `curl` and silently vanishes for
+  every real browser — which is why the verifier tests the gzip path a browser actually uses,
+  not just the plain one.
+
+Verified in a real Chromium over the LAN as the `family` account: `crypto.randomUUID` is a
+function returning unique valid v4 UUIDs, zero page errors, ComfyUI opens
+`ws://192.168.31.60:8189/ws`, a queued SDXL job pushed three live `status` frames
+(`queue_remaining` 1 → 1 → 0), and the result came back through `/view`
+(455 222 bytes, valid PNG magic).
+
+**This is not a general cure for insecure contexts.** `crypto.subtle`, `navigator.clipboard`,
+service workers, `SharedArrayBuffer` and friends remain unavailable over plain HTTP. If the UI
+ever grows a dependency on one of those, the answer is HTTPS (§6) — not another polyfill. The
+day the door moves to HTTPS, delete the `replace` block; nothing else depends on it.
+
 ## 6. Adding HTTPS later (optional)
 
 Worth doing if the password ever needs to cross an untrusted network, or just to stop the
@@ -196,10 +245,16 @@ firewall/bind state):
 
     python3 deploy/caddy/verify_lan_access.py
 
-Last run: **13/13 passed** — 401 challenge, wrong password rejected, 200 + system_stats,
-ComfyUI HTML, WebSocket 101 with `status` frame, prompt submitted through the proxy,
-image produced and downloaded back through it, 8188 unreachable on the LAN IP, 8189 bound to
-`192.168.31.60` only.
+Last run: **15/15 passed** (14 executed, 1 skipped for root) — 401 challenge, wrong password
+rejected, 200 + system_stats, ComfyUI HTML, the `randomUUID` polyfill present ahead of
+ComfyUI's module script and surviving gzip, WebSocket 101 with `status` frame, prompt
+submitted through the proxy, image produced and downloaded back through it, 8188 unreachable
+on the LAN IP, 8189 bound to `192.168.31.60` only.
+
+Separately, in a real Chromium over the LAN: `crypto.randomUUID` works, no page errors, the
+app's own socket opens, a queued job pushes live queue updates, and the PNG comes back through
+the proxy. The 404s in the browser console (`user.css`, `/api/userdata/...`) reproduce against
+upstream `127.0.0.1:8188` too — they are ComfyUI's own, not the proxy's.
 
 | Symptom | Cause / fix |
 |---|---|
@@ -210,12 +265,16 @@ image produced and downloaded back through it, 8188 unreachable on the LAN IP, 8
 | Login dialog appears on every single request | The device is sending requests to two different origins (e.g. one via IP, one via hostname) |
 | Everything stopped after a reboot | `systemctl --user status comfyui-caddy`, `loginctl show-user dmitry \| grep Linger`, `journalctl --user -u comfyui-caddy -n 50` |
 | Who tried to get in? | `grep 401 ~/.local/share/comfyui-caddy/access.log` |
+| UI paints but nothing works; console: `crypto.randomUUID is not a function` | The polyfill block is missing or not reaching the browser. `grep -c comfyui-lan-uuid-polyfill ~/.config/comfyui-caddy/Caddyfile` (expect ≥1), then `grep -c 'header_up Accept-Encoding identity' ...` (expect 1 — without it `encode` hides the HTML from `replace`), then `python3 deploy/caddy/lan_access.py render` and reload the page hard |
+| `unrecognized directive: replace` on reload | The running Caddy binary has no `replace-response` module. `~/.local/bin/caddy list-modules \| grep replace` — if empty, install the custom build (§3) and `systemctl --user restart comfyui-caddy`; a hot reload cannot add a module to a running process |
+| `caddy: cannot execute binary file` / segmentation fault right after `caddy add-package` | `add-package` left a **truncated** binary (8.6 MB instead of ~50 MB): it renames the working one to `caddy.tmp` and downloads the replacement, and an interrupted download leaves the door one restart away from dead. Restore: `cp ~/.local/bin/caddy.v2.10.2-known-good ~/.local/bin/caddy` or re-download the build with the plugin, then `systemctl --user restart comfyui-caddy`. Check with `~/.local/bin/caddy version` before restarting |
 
 ## 8. Undoing all of it
 
     sudo ./deploy/lan8189-enable.sh --revoke         # firewall rule gone
     systemctl --user disable --now comfyui-caddy     # proxy gone
-    rm -rf ~/.config/comfyui-caddy ~/.local/bin/caddy ~/.local/share/comfyui-caddy
+    rm -rf ~/.config/comfyui-caddy ~/.local/share/comfyui-caddy
+    rm -f ~/.local/bin/caddy ~/.local/bin/caddy.tmp ~/.local/bin/caddy.v2.10.2-known-good
 
 ComfyUI itself was never modified: it still publishes `127.0.0.1:8188`, its `--enable-cors-header`
 flag was not touched, and no wildcard CORS was introduced.

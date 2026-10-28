@@ -10,7 +10,11 @@ has to answer:
 
   1. is there a login?                  no credentials -> 401 + WWW-Authenticate: Basic
   2. does a wrong password fail?         wrong credentials -> 401
-  3. does a right password get in?       -> 200 + ComfyUI's own JSON/HTML
+  3. does a right password get in?       -> 200 + ComfyUI's own JSON/HTML, with the
+                                           crypto.randomUUID polyfill injected ahead of
+                                           ComfyUI's module script (plain HTTP is not a
+                                           secure context, so the app would otherwise die
+                                           with "crypto.randomUUID is not a function")
   4. does the WebSocket upgrade work?    -> 101 with auth, 401 without; first frame is
                                            ComfyUI's {"type": "status"} hello
   5. can something actually generate?    -> POST /prompt through the proxy, poll /history,
@@ -26,6 +30,7 @@ has ComfyUI's prerequisites and nothing else.
 from __future__ import annotations
 
 import base64
+import gzip
 import json
 import os
 import random
@@ -220,6 +225,30 @@ def main() -> int:
     ok = status == 200 and b"ComfyUI" in body
     check("right password -> ComfyUI UI html", PASS if ok else FAIL,
           f"{status}, {len(body)} bytes")
+
+    # 3b: the plain-HTTP polyfill ----------------------------------------------------------
+    # https://192.168.31.60 would be a secure context; http:// is not, so crypto.randomUUID
+    # does not exist and ComfyUI's client id throws. Caddy injects a polyfill into <head>
+    # with the replace module. It must land *before* ComfyUI's module script (module scripts
+    # are deferred, an inline classic script is not), and it must survive `encode`, which
+    # compresses proxied HTML. A browser always asks for compression, so that path is the
+    # one worth testing — a plain curl without Accept-Encoding would pass while a real
+    # family browser still broke.
+    marker = b"comfyui-lan-uuid-polyfill"
+    status, headers, body = request("/", auth=good, headers={"Accept-Encoding": "identity"})
+    head_at, poly_at, module_at = (body.find(b"<head>"), body.find(marker),
+                                   body.find(b'<script type="module"'))
+    ordered = 0 <= head_at < poly_at < module_at
+    check("polyfill injected before ComfyUI's module script", PASS if ordered else FAIL,
+          f"head@{head_at} polyfill@{poly_at} module@{module_at}" if status == 200
+          else f"status={status}")
+
+    status, headers, body = request("/", auth=good, headers={"Accept-Encoding": "gzip"})
+    encoding = header(headers, "Content-Encoding")
+    decoded = gzip.decompress(body) if encoding == "gzip" else body
+    ok = status == 200 and marker in decoded
+    check("polyfill survives the compressed path browsers use", PASS if ok else FAIL,
+          f"content-encoding={encoding or 'none'}, {len(body)} on the wire -> {len(decoded)} decoded")
 
     # 4: WebSocket ------------------------------------------------------------------------
     status, _, sock = ws_handshake(None)

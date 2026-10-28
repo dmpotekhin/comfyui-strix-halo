@@ -62,7 +62,17 @@ WAN 2.2 TI2V 5B **проверен на реальном прогоне**: t2v �
 `http://192.168.31.60:8189` — нативный ComfyUI, а не Студия. Порт 8188 не тронут:
 он по-прежнему только на `127.0.0.1`, потому что у ComfyUI нет своей авторизации и
 любой, кто до него дотянется, получает исполнение кода на этой GPU. Единственная
-сетевая дверь — Caddy 2.10.2 (user-юнит `comfyui-caddy`, `Linger=yes`) с basic auth.
+сетевая дверь — Caddy (user-юнит `comfyui-caddy`, `Linger=yes`) с basic auth.
+
+* Caddy здесь **не стоковый**: v2.11.7, собранный с `github.com/caddyserver/replace-response`.
+  Модуль нужен ради полифила `crypto.randomUUID` — по HTTP это не secure context,
+  метода нет, и фронтенд ComfyUI падал с `crypto.randomUUID is not a function` (граф
+  рисовался, очередь не работала). Полифил вставляется в `<head>` через `replace`,
+  только для `text/html`, и работает только потому, что в `reverse_proxy` стоит
+  `header_up Accept-Encoding identity` — в сжатом теле `replace` ничего не находит.
+  `caddy add-package` на этой машине не использовать: он оставил обрезанный бинарь
+  (8.6 МБ), при живом старом процессе — упало бы только на следующем рестарте.
+  Целый стоковый лежит в `~/.local/bin/caddy.v2.10.2-known-good`.
 
 * `bind 192.168.31.60` в Caddyfile — не украшение: адрес сайта в Caddyfile это матчер
   хоста, а не адрес bind. Без строки Caddy слушал `*:8189`, то есть и `docker0`, и

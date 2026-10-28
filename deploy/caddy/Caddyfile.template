@@ -41,6 +41,23 @@ http://192.168.31.60:8189 {
 
 	encode zstd gzip
 
+	# ── The plain-HTTP casualty: crypto.randomUUID ────────────────────────────────
+	# ComfyUI's frontend builds its client id with crypto.randomUUID(). That method only
+	# exists in a secure context (HTTPS or localhost). Over http://192.168.31.60:8189 it
+	# is undefined, so the app throws "crypto.randomUUID is not a function" before it
+	# ever opens its queue socket — the graph still paints, nothing updates.
+	# crypto.getRandomValues() DOES work on plain HTTP, so this injects an RFC 4122 v4
+	# implementation into <head>, ahead of ComfyUI's module script (modules are deferred,
+	# a classic inline script is not). Only text/html is touched, and only by this
+	# substitution. Delete this block the day the door moves to HTTPS — see
+	# docs/comfyui_lan_access.md §6. Module: github.com/caddyserver/replace-response.
+	replace {
+		match {
+			header Content-Type text/html*
+		}
+		"<head>" "<head><script>/*comfyui-lan-uuid-polyfill*/if(!(window.crypto&&window.crypto.randomUUID)){var c=window.crypto;if(c&&c.getRandomValues){var f=function(){var b=new Uint8Array(16);c.getRandomValues(b);b[6]=(b[6]&15)|64;b[8]=(b[8]&63)|128;var h=Array.prototype.map.call(b,function(x){return('0'+x.toString(16)).slice(-2)}).join('');return h.slice(0,8)+'-'+h.slice(8,12)+'-'+h.slice(12,16)+'-'+h.slice(16,20)+'-'+h.slice(20)};try{c.randomUUID=f}catch(e){Object.defineProperty(c,'randomUUID',{value:f,configurable:true,writable:true})}}}</script>"
+	}
+
 	# ── The one upstream ─────────────────────────────────────────────────────────
 	reverse_proxy 127.0.0.1:8188 {
 		# ComfyUI pushes queue/progress over a long-lived WebSocket at /ws.
@@ -65,5 +82,10 @@ http://192.168.31.60:8189 {
 		# browser from Host, so rewriting it to 127.0.0.1:8188 would point every family
 		# browser at its own loopback. X-Real-IP is not a Caddy default, so it is explicit.
 		header_up X-Real-IP {remote_host}
+
+		# The replace module cannot substitute inside a compressed body, and `encode`
+		# compresses proxied responses. Asking ComfyUI for identity keeps the HTML that
+		# reaches `replace` readable; Caddy re-compresses it for the browser afterwards.
+		header_up Accept-Encoding identity
 	}
 }

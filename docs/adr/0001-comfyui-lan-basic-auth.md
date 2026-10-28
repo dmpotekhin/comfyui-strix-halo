@@ -78,3 +78,39 @@ Concretely:
   bind and systemd retries every 5 s until the address returns; bookmarks then need the new
   IP. A DHCP reservation is the fix and lives on the router, not in this repo.
 * The laptop must be awake for anyone to use it.
+
+## Amendment, 2026-10-28 (later the same day) — the polyfill, and a non-stock Caddy
+
+Plain HTTP is not a **secure context**, so the browser does not expose `crypto.randomUUID()`
+and ComfyUI's frontend — which builds its client id with it — throws
+`crypto.randomUUID is not a function`. The graph still painted, so the door *looked* fine while
+nothing could be queued. Confirmed by measurement (`isSecureContext: false`,
+`typeof crypto.randomUUID === "undefined"`), not assumed from the error text.
+
+**Decision:** keep plain HTTP for now and inject a minimal RFC 4122 v4 polyfill into
+ComfyUI's `<head>` with Caddy's `replace` directive
+(`github.com/caddyserver/replace-response`), rather than moving to HTTPS today.
+
+Why this and not HTTPS: HTTPS is the *proper* fix (§6 of the operator guide) but it requires
+installing Caddy's root certificate on the wife's and daughter's devices — a physical,
+per-device step that would have blocked the thing they actually asked for. The polyfill needs
+`crypto.getRandomValues()`, which *is* available over plain HTTP, and it is inert on any secure
+origin.
+
+Consequences:
+
+* The Caddy binary is no longer a stock release: it is a custom build from
+  `caddyserver.com/api/download?...&p=github.com/caddyserver/replace-response`
+  (built here: v2.11.7). `caddy add-package` is not to be trusted on this machine — it left a
+  truncated 8.6 MB binary behind while the old process kept serving, so the failure would have
+  surfaced only at the next restart. A known-good stock binary is kept at
+  `~/.local/bin/caddy.v2.10.2-known-good`.
+* `header_up Accept-Encoding identity` is required. The replace module cannot read a compressed
+  body, and `encode` would compress the proxied HTML first; without it the polyfill would work
+  for `curl` and silently vanish for every browser. The verifier therefore tests the gzip path.
+* Only `text/html` responses are touched, and only by that one substitution.
+* This is a targeted stopgap, not a general cure for insecure contexts: `crypto.subtle`,
+  `navigator.clipboard` and service workers stay unavailable. If the UI ever needs one of them,
+  the answer is HTTPS, not another polyfill — and this amendment is the thing to revisit.
+* Accepted risk unchanged: the password is still cleartext on the wire, and the polyfill
+  changes nothing about that.
