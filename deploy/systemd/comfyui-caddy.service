@@ -1,0 +1,28 @@
+[Unit]
+Description=Caddy — authenticated LAN door to native ComfyUI (192.168.31.60:8189)
+Documentation=file:///home/dmitry/workspace/comfyui-strix-halo/docs/comfyui_lan_access.md
+# The LAN address is a DHCP lease on wlp194s0. If Wi-Fi is not up yet caddy exits with
+# EADDRNOTAVAIL; Restart=always below retries until the address exists.
+After=network-online.target
+Wants=network-online.target
+After=docker.service
+# Deliberately not Requires=docker.service: ComfyUI gets restarted and rebuilt regularly
+# and the proxy must survive that (it answers 502 for a few seconds instead of dying).
+
+[Service]
+Type=simple
+# Refuse to start on a broken Caddyfile instead of half-serving it.
+ExecStartPre=/home/dmitry/.local/bin/caddy validate --config /home/dmitry/.config/comfyui-caddy/Caddyfile
+ExecStart=/home/dmitry/.local/bin/caddy run --config /home/dmitry/.config/comfyui-caddy/Caddyfile
+ExecReload=/home/dmitry/.local/bin/caddy reload --config /home/dmitry/.config/comfyui-caddy/Caddyfile
+Restart=always
+RestartSec=5
+# Never give up: the door is for the household, not for one session.
+StartLimitIntervalSec=0
+KillSignal=SIGINT
+TimeoutStopSec=10
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=default.target

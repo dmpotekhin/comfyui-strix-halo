@@ -1,0 +1,68 @@
+# Caddyfile TEMPLATE — rendered by deploy/caddy/lan_access.py into
+# ~/.config/comfyui-caddy/Caddyfile. Do not run this file directly.
+#
+# What it guards: the native ComfyUI UI (port 8188 inside the container, published only
+# to 127.0.0.1). ComfyUI has no authentication of its own — anyone who can reach 8188
+# gets an execution endpoint with a GPU and a filesystem. So the container port stays
+# loopback-only and THIS proxy is the single LAN-facing door, with basic auth in front.
+#
+# LAN only, plain HTTP, by design: see docs/comfyui_lan_access.md (§ HTTPS later).
+
+{
+	# Keep the admin API on its default loopback socket so `caddy reload` (used by
+	# `lan_access.py render`) can swap credentials without dropping connections.
+	admin localhost:2019
+}
+
+http://192.168.31.60:8189 {
+	# The address above is a HOST MATCHER, not a bind address — without this line Caddy
+	# listens on *:8189, which includes docker0 and the xray tunnel. Pin it to the Wi-Fi
+	# interface: the household door exists on the LAN and nowhere else.
+	bind 192.168.31.60
+
+	# ── Who may come in ───────────────────────────────────────────────────────────
+	# bcrypt hashes only. Plaintext lives in ~/.config/comfyui-caddy/users.json (0600).
+	# Revoke one person = delete one line (lan_access.py rm <user>) + reload.
+	basic_auth {
+@@USERS@@
+	}
+
+	# ── Access log ────────────────────────────────────────────────────────────────
+	# 401s here mean someone on the LAN is guessing; keep the evidence.
+	log {
+		output file /home/dmitry/.local/share/comfyui-caddy/access.log {
+			roll_size 10MiB
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format console
+	}
+
+	encode zstd gzip
+
+	# ── The one upstream ─────────────────────────────────────────────────────────
+	reverse_proxy 127.0.0.1:8188 {
+		# ComfyUI pushes queue/progress over a long-lived WebSocket at /ws.
+		# Caddy performs the Upgrade handshake itself (no extra config needed) and,
+		# per-connection, this keeps every write flowing immediately instead of
+		# arriving in buffered bursts — that is the difference between "step 12/30"
+		# ticking live and the whole progress appearing when the job is done.
+		flush_interval -1
+
+		# A WAN 2.2 clip takes ~27 minutes with no bytes on the wire while it samples.
+		# Defaults would have Caddy time the connection out mid-generation.
+		transport http {
+			read_timeout 0
+			write_timeout 0
+			response_header_timeout 0
+			dial_timeout 10s
+		}
+
+		# Host, X-Forwarded-For, X-Forwarded-Proto and X-Forwarded-Host are set by Caddy
+		# itself (Host is passed through unchanged) — declaring them here is a no-op and
+		# Caddy warns about it. Host matters: ComfyUI builds the ws:// URL it hands to the
+		# browser from Host, so rewriting it to 127.0.0.1:8188 would point every family
+		# browser at its own loopback. X-Real-IP is not a Caddy default, so it is explicit.
+		header_up X-Real-IP {remote_host}
+	}
+}
