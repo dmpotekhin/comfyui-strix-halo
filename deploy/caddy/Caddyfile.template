@@ -1,5 +1,6 @@
-# Caddyfile TEMPLATE — rendered by deploy/caddy/lan_access.py into
-# ~/.config/comfyui-caddy/Caddyfile. Do not run this file directly.
+# TEMPLATE. The file Caddy actually reads is rendered from this one by
+# deploy/caddy/lan_access.py into ~/.config/comfyui-caddy/Caddyfile — edit this file, then
+# run `python3 deploy/caddy/lan_access.py render` (it validates and hot-reloads).
 #
 # What it guards: the native ComfyUI UI (port 8188 inside the container, published only
 # to 127.0.0.1). ComfyUI has no authentication of its own — anyone who can reach 8188
