@@ -108,7 +108,14 @@ Key Caddyfile decisions (each one is commented in the file itself):
 ## 4. Firewall
 
 Caddy listens on 8189, but the machine's default incoming policy is `DROP`, so the port is
-unreachable until one rule exists. It is added by:
+unreachable from another device until one rule exists.
+
+> **State on this machine at commit `b44c103`: NOT yet applied.** It needs root and was the
+> one step the setup could not do unattended. Until it is applied, `192.168.31.60:8189`
+> answers on this laptop itself and is dropped for everyone else. Everything else in this
+> document is done and verified.
+
+It is added by:
 
     sudo ./deploy/lan8189-enable.sh          # apply  (idempotent, adds one rule)
     sudo ./deploy/lan8189-enable.sh --check  # report only
