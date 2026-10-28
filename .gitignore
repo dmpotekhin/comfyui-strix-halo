@@ -58,6 +58,10 @@ htmlcov/
 *.sqlite3
 # Runtime database: the studio recreates it on first start; the -shm/-wal siblings are transient.
 studio/data/
+# The LAN door's password store lives at ~/.config/comfyui-caddy/users.json, outside this repo,
+# and is never rendered into the Caddyfile. This rule is for the copy somebody will inevitably
+# make while debugging: passwords in plaintext must not be committable at all.
+users.json
 *.pem
 *.key
 .DS_Store

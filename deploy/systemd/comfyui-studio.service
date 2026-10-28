@@ -1,0 +1,32 @@
+[Unit]
+Description=Local AI Creator Studio (ComfyUI web front-end)
+Documentation=file:///home/dmitry/workspace/comfyui-strix-halo/docs/network_access.md
+# The studio binds the LAN address, so it must wait until Wi-Fi actually has that address.
+# If it starts too early check_bind() fails loudly and RestartSec retries.
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=dmitry
+Group=dmitry
+WorkingDirectory=/home/dmitry/workspace/comfyui-strix-halo
+Environment=PYTHONUNBUFFERED=1
+# LAN-only by design: ComfyUI itself stays on 127.0.0.1:8188.
+# 0.0.0.0 is refused by app.config.check_bind — it would also expose the studio on docker0 and
+# the VPN interface. Change the address here if the router hands out a different reservation.
+ExecStart=/home/dmitry/workspace/comfyui-strix-halo/studio/start.sh --host 192.168.31.60 --port 8000
+Restart=always
+RestartSec=10
+# Never give up: the whole point is that the household can come back after a crash.
+StartLimitIntervalSec=0
+TimeoutStopSec=20
+KillSignal=SIGINT
+# Modest hardening — no need for a new namespace, but the studio has no business writing outside
+# its own tree or gaining privileges.
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
