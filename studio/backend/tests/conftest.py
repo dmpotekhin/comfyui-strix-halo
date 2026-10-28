@@ -202,3 +202,75 @@ def settings():
                     comfy_completion_timeout_s=5.0,
                     poll_interval_s=0.2,
                     progress_ws=False)
+
+
+# ---------------------------------------------------------------- accounts / sessions
+
+ADMIN = ("dmitry", "test-admin-Passw0rd!")
+MEMBER = ("wife", "test-member-Passw0rd!")
+OTHER = ("daughter", "test-other-Passw0rd!")
+
+
+def seed_users(st) -> dict[str, dict]:
+    """Create the household accounts straight in the DB, as `python -m app.auth adduser` does."""
+    from app.auth import create_user
+
+    out = {}
+    for (username, password), role in ((ADMIN, "admin"), (MEMBER, "user"), (OTHER, "user")):
+        out[username] = create_user(st.db, username, password, role=role,
+                                    display_name=username.title())
+    return out
+
+
+def login(c, username: str, password: str) -> dict:
+    """Log in and arm the client for CSRF-protected writes, like the browser does."""
+    r = c.post("/api/auth/login", json={"username": username, "password": password})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    c.headers["X-CSRF-Token"] = body["user"]["csrf_token"]
+    return body["user"]
+
+
+def second_client(client, username: str, password: str):
+    """Another browser on the LAN: same app, its own cookie jar.
+
+    Deliberately not a second ``with TestClient(...)`` block — that would re-run startup and
+    restart the job worker of the app the first client is already using.
+    """
+    from fastapi.testclient import TestClient as _TC
+
+    c2 = _TC(client.app)
+    login(c2, username, password)
+    return c2
+
+
+def seed_job(st, user_id: str, job_id: str, *, status: str = "queued") -> dict:
+    """A job row that no worker will touch — deterministic starting point for ownership tests."""
+    return st.db.create_job(job_id=job_id, workflow_id="test-turbo",
+                            workflow_name="Test workflow test-turbo", params={}, graph={},
+                            client_id="test-client", client_token=None, status=status,
+                            user_id=user_id)
+
+
+@pytest.fixture
+def client(project, settings):
+    """An authenticated admin session against the real app (engine deliberately unreachable)."""
+    from fastapi.testclient import TestClient
+
+    from app.api import create_app
+
+    project.write_workflow(workflow_def())
+    dist = project.layout.frontend_dist
+    (dist / "assets").mkdir(parents=True, exist_ok=True)
+    (dist / "index.html").write_text("<!doctype html><title>Creator Studio</title>",
+                                     encoding="utf-8")
+    (dist / "assets" / "app.css").write_text("body{color:#fff}", encoding="utf-8")
+    app = create_app(project.layout, settings)
+    with TestClient(app) as c:
+        st = app.state.studio
+        # Startup could not reach ComfyUI, so install the synthetic environment.
+        st.registry.set_environment(project.inventory(), NODE_INFO)
+        c.app_state = st
+        c.users = seed_users(st)
+        login(c, *ADMIN)
+        yield c

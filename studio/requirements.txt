@@ -4,6 +4,7 @@
 fastapi==0.162.0
 uvicorn[standard]==0.54.0
 httpx==0.28.1
+argon2-cffi==25.1.0         # argon2id password hashing for studio accounts
 python-multipart==0.0.32   # multipart/form-data uploads
 websockets==17.3           # ComfyUI progress stream
 

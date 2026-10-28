@@ -231,3 +231,15 @@ figure audio{margin:0}
 .file-card{display:flex;align-items:center;gap:8px;min-height:96px;padding:14px;border:1px solid var(--line,#2a2f3a);border-radius:12px;font-family:var(--mono,monospace);font-size:12px;word-break:break-all;text-decoration:none}
 .file-card::before{content:"📄";font-size:20px}
 .file-chip{font-family:var(--mono,monospace);font-size:11px;opacity:.8}
+
+/* ---- sign-in (stage NET-1: the studio is on the home LAN now, so it has a front door) */
+[hidden]{display:none !important}
+.login-screen{position:fixed;inset:0;display:grid;place-items:center;padding:24px;background:var(--bg);z-index:50}
+.login-card{width:min(360px,100%);background:var(--bg-card);border:1px solid var(--line);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow)}
+.login-card .brand{padding:0 0 14px;border-bottom:1px solid var(--line);margin-bottom:18px}
+.login-card h1{font-size:17px;margin:0 0 6px}
+.login-card .field input{width:100%}
+.user-chip{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-bottom:8px;margin-bottom:8px;border-bottom:1px solid var(--line);font-size:11px}
+.user-chip #logout{cursor:pointer;text-decoration:none;border-bottom:1px dotted currentColor}
+.user-chip #logout:hover{color:var(--fg)}
+

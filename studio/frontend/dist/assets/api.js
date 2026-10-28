@@ -1,5 +1,9 @@
 // Thin API client. Every call throws ApiError with the server's message so views can show
 // exactly what went wrong instead of a generic failure.
+//
+// Since stage NET-1 the studio is reachable from the home LAN, so every request carries the
+// session cookie and every state-changing request carries the per-session CSRF token. Both are
+// same-origin only: nothing here talks to another host.
 
 export class ApiError extends Error {
   constructor(status, payload) {
@@ -15,14 +19,35 @@ export class ApiError extends Error {
   }
 }
 
+let csrfToken = null;
+let currentUser = null;
+
+const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+/** Fired when the server says we are not (or no longer) logged in. */
+export const UNAUTHORIZED = 'studio:unauthorized';
+
+function onUnauthorized() {
+  currentUser = null;
+  csrfToken = null;
+  window.dispatchEvent(new CustomEvent(UNAUTHORIZED));
+}
+
 async function request(path, options = {}) {
+  const method = (options.method || 'GET').toUpperCase();
+  const headers = {};
+  if (!(options.body instanceof FormData)) headers['Content-Type'] = 'application/json';
+  if (UNSAFE.has(method) && csrfToken) headers['X-CSRF-Token'] = csrfToken;
   const res = await fetch(path, {
-    headers: options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' },
+    credentials: 'same-origin', // the session cookie must ride along, and only to us
     ...options,
+    method,
+    headers: { ...headers, ...(options.headers || {}) },
   });
   const text = await res.text();
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
+  if (res.status === 401 && !path.startsWith('/api/auth/login')) onUnauthorized();
   if (!res.ok) throw new ApiError(res.status, data);
   return data;
 }
@@ -30,8 +55,34 @@ async function request(path, options = {}) {
 const get = (path) => request(path);
 const post = (path, body) => request(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined });
 const put = (path, body) => request(path, { method: 'PUT', body: JSON.stringify(body) });
+const patch = (path, body) => request(path, { method: 'PATCH', body: JSON.stringify(body) });
+const del = (path) => request(path, { method: 'DELETE' });
+
+export const auth = {
+  current: () => currentUser,
+  isAdmin: () => !!currentUser?.is_admin,
+  /** Who am I? Also refreshes the CSRF token, which rotates with the session. */
+  async me() {
+    const body = await request('/api/auth/me');
+    currentUser = body.user;
+    csrfToken = body.user?.csrf_token || null;
+    return currentUser;
+  },
+  async login(username, password) {
+    const body = await post('/api/auth/login', { username, password });
+    currentUser = body.user;
+    csrfToken = body.user?.csrf_token || null;
+    return currentUser;
+  },
+  async logout() {
+    try { await post('/api/auth/logout'); } finally { onUnauthorized(); }
+  },
+  changePassword: (current_password, new_password) =>
+    post('/api/auth/password', { current_password, new_password }),
+};
 
 export const api = {
+  auth,
   health: () => get('/api/health'),
   stats: () => get('/api/stats'),
   refreshEngine: () => post('/api/engine/refresh'),
@@ -67,6 +118,12 @@ export const api = {
     return request('/api/uploads', { method: 'POST', body: fd });
   },
 
+  // Admin only. A member gets 403 from the server; the UI hides these views too, but the
+  // server is what actually enforces it.
   settings: () => get('/api/settings'),
-  saveSettings: (patch) => put('/api/settings', patch),
+  saveSettings: (patchBody) => put('/api/settings', patchBody),
+  users: () => get('/api/users'),
+  createUser: (body) => post('/api/users', body),
+  updateUser: (id, body) => patch(`/api/users/${encodeURIComponent(id)}`, body),
+  deleteUser: (id) => del(`/api/users/${encodeURIComponent(id)}`),
 };

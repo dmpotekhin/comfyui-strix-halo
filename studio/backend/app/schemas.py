@@ -245,6 +245,7 @@ class JobOut(BaseModel):
     finished_at: str | None = None
     duration_s: float | None = None
     queue_position: int | None = None
+    eta_seconds: int | None = None
 
 
 class HealthOut(BaseModel):

@@ -1,19 +1,28 @@
 """FastAPI application: routes, wiring and lifecycle.
 
-Local-only by design: the default bind is 127.0.0.1, no CORS wildcard, no auth (there is
-nothing to authenticate against on localhost), and every filesystem path is resolved through
-the allow-list in paths.py.
+Reachable from the home LAN since Stage NET-1, and therefore authenticated end to end: every
+`/api/...` route depends on `get_current_user` (see app/auth.py) and decides what the caller may
+see from the caller's role and id. The browser shell itself is public — it has to be, or the login
+form could not load — but it renders nothing without a session.
+
+What is still deliberately closed:
+  * ComfyUI itself listens on 127.0.0.1:8188 with no auth and is never proxied to the LAN;
+  * the bind address must be loopback or this machine's own LAN address (no 0.0.0.0);
+  * every filesystem path is resolved through the allow-list in paths.py, and media is additionally
+    checked against the caller's own `users/<id>/` prefix.
 
 Route groups
+  /api/auth        login, logout, whoami, password (public: login only)
+  /api/users       account management (admin)
   /api/health      liveness + engine capability
   /api/stats       dashboard aggregates
   /api/workflows   library, detail, categories
-  /api/jobs        submit, list, poll, cancel
-  /api/outputs     media delivery (range-capable)
+  /api/jobs        submit, list, poll, cancel (owner or admin)
+  /api/outputs     media delivery (range-capable, per-user)
   /api/uploads     validated image upload into ComfyUI's input dir
-  /api/models      inventory, curated catalog, approval-gated downloads
-  /api/gallery     output history
-  /api/settings    read/update runtime config
+  /api/models      inventory, curated catalog, approval-gated downloads (admin)
+  /api/gallery     output history, filtered to the caller
+  /api/settings    read/update runtime config (admin)
 """
 from __future__ import annotations
 
@@ -25,15 +34,19 @@ import shutil
 import time
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, unquote
+from urllib.parse import quote, unquote, urlsplit
 
-from fastapi import Body, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
+from fastapi import (Body, Depends, FastAPI, File, Header, HTTPException, Query, Request,
+                     Response, UploadFile)
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
+from .auth import (CSRF_COOKIE, SAFE_METHODS, SESSION_COOKIE, AuthError, LoginThrottle,
+                   Principal, authenticate, client_ip, create_user as create_account,
+                   end_session, get_current_user, require_admin, set_password, start_session)
 from .comfy import ComfyClient, ComfyError
-from .config import EDITABLE_FIELDS, save_settings
+from .config import EDITABLE_FIELDS, is_loopback, save_settings
 from .db import Database
 from .downloads import DownloadManager, DownloadRefused, summarize_size
 from .inventory import MODEL_EXTS, Inventory, analyze
@@ -143,6 +156,260 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
     )
     app.state.studio = state
 
+    # -- auth plumbing -----------------------------------------------------------------
+    throttle = LoginThrottle(
+        max_attempts=int(settings.login_max_attempts),
+        window_s=float(settings.login_window_s),
+        cooldown_s=float(settings.login_cooldown_s),
+    )
+    csp = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+           "img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; "
+           "font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; "
+           "frame-ancestors 'none'")
+
+    def _allowed_origins() -> set[str]:
+        """Origins that may drive this API from a browser: this machine, on this port."""
+        hosts = {"127.0.0.1", "localhost", "::1", "[::1]"}
+        if settings.host:
+            hosts.add(settings.host)
+        origins: set[str] = set()
+        for host in hosts:
+            origins.add(f"http://{host}:{settings.port}")
+            origins.add(f"http://{host}")
+        if settings.cookie_secure:  # Phase C: behind TLS the scheme changes
+            origins |= {o.replace("http://", "https://", 1) for o in list(origins)}
+        return origins
+
+    def _origin_allowed(request: Request, origin: str) -> bool:
+        """Is this Origin the address the browser actually used to reach us?
+
+        Comparing Origin against the request's own Host header is the check that survives being
+        started on --port 8137, bound to 192.168.31.60, or reached as http://laptop.local:8000 —
+        a static allow-list built from settings only knows the configured port and would reject
+        the very page it just served. The static list is kept for loopback aliases that may differ
+        from Host (a reverse proxy in Phase C terminates on another name).
+        """
+        if origin.rstrip("/") in _allowed_origins():
+            return True
+        parsed = urlsplit(origin)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        return bool(parsed.netloc) and parsed.netloc == request.headers.get("host", "")
+
+    @app.middleware("http")
+    async def _security_headers(request: Request, call_next):
+        """Refuse cross-site writes and stamp the headers a LAN web app should carry.
+
+        The session cookie is `SameSite=Lax`, which already blocks cross-site POSTs; the Origin
+        check is the belt to that braces, and it also covers the login form (which has no cookie
+        yet). CSP is skipped for media responses because a range-served video is not a document.
+        """
+        if request.method not in SAFE_METHODS:
+            origin = request.headers.get("origin")
+            if origin and not _origin_allowed(request, origin):
+                state.db.log_event(
+                    f"refused cross-origin {request.method} {request.url.path} from {origin}",
+                    level="warn")
+                return JSONResponse({"detail": "cross-origin request refused"}, status_code=403)
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+        response.headers.setdefault("Permissions-Policy",
+                                    "geolocation=(), microphone=(), camera=()")
+        if not request.url.path.startswith("/api/outputs"):
+            response.headers.setdefault("Content-Security-Policy", csp)
+        return response
+
+    def _set_session_cookies(response: Response, token: str, csrf: str) -> None:
+        max_age = int(float(settings.session_ttl_hours) * 3600)
+        kwargs = {"max_age": max_age, "path": "/", "samesite": "lax",
+                  "secure": bool(settings.cookie_secure)}
+        response.set_cookie(SESSION_COOKIE, token, httponly=True, **kwargs)
+        # Readable by the SPA on purpose: it must echo this back in X-CSRF-Token. It is useless on
+        # its own — the server compares it with the value bound to the (httpOnly) session.
+        response.set_cookie(CSRF_COOKIE, csrf, httponly=False, **kwargs)
+
+    def _clear_session_cookies(response: Response) -> None:
+        response.delete_cookie(SESSION_COOKIE, path="/")
+        response.delete_cookie(CSRF_COOKIE, path="/")
+
+    # -- auth routes -------------------------------------------------------------------
+    @app.post("/api/auth/login")
+    async def login(payload: dict[str, Any] = Body(...), request: Request = None,
+                    response: Response = None) -> dict[str, Any]:
+        username = str((payload or {}).get("username") or "").strip()
+        password = str((payload or {}).get("password") or "")
+        ip = client_ip(request)
+        wait = throttle.check(username, ip)
+        if wait > 0:
+            raise HTTPException(429, f"too many failed attempts; try again in {int(wait) + 1}s",
+                                headers={"Retry-After": str(int(wait) + 1)})
+        user = authenticate(state.db, username, password)
+        if user is None:
+            throttle.fail(username, ip)
+            state.db.log_event(f"failed login for {username[:40]!r} from {ip}", level="warn")
+            raise HTTPException(401, "wrong username or password",
+                                headers={"WWW-Authenticate": "Session"})
+        throttle.reset(username, ip)
+        token, csrf = start_session(state.db, user["id"], settings.session_ttl_hours,
+                                    client_ip=ip,
+                                    user_agent=request.headers.get("user-agent"))
+        _set_session_cookies(response, token, csrf)
+        state.db.log_event(f"signed in from {ip}", user_id=user["id"])
+        return {"user": {"id": user["id"], "username": user["username"],
+                         "display_name": user["display_name"] or user["username"],
+                         "role": user["role"], "is_admin": user["role"] == "admin",
+                         "csrf_token": csrf}}
+
+    @app.post("/api/auth/logout")
+    async def logout(response: Response, user: Principal = Depends(get_current_user)) -> dict[str, Any]:
+        end_session(state.db, user.token)
+        _clear_session_cookies(response)
+        state.db.log_event("signed out", user_id=user.id)
+        return {"ok": True}
+
+    @app.get("/api/auth/me")
+    async def whoami(user: Principal = Depends(get_current_user)) -> dict[str, Any]:
+        return {
+            "user": user.to_public(),
+            "server": {"version": __version__, "comfy_url": state.settings.comfy_url,
+                       "lan_subnet": state.settings.lan_subnet,
+                       "session_ttl_hours": state.settings.session_ttl_hours},
+        }
+
+    @app.post("/api/auth/password")
+    async def change_own_password(payload: dict[str, Any] = Body(...),
+                                  request: Request = None,
+                                  response: Response = None,
+                                  user: Principal = Depends(get_current_user)) -> dict[str, Any]:
+        current = str((payload or {}).get("current_password") or "")
+        new = str((payload or {}).get("new_password") or "")
+        row = state.db.get_user(user.id)
+        if row is None or not authenticate(state.db, row["username"], current):
+            raise HTTPException(403, "current password is wrong")
+        try:
+            set_password(state.db, user.id, new)  # revokes every existing session
+        except AuthError as e:
+            raise HTTPException(422, str(e)) from e
+        # …including this one, so hand the caller a fresh session instead of logging them out.
+        token, csrf = start_session(state.db, user.id, settings.session_ttl_hours,
+                                    client_ip=client_ip(request),
+                                    user_agent=request.headers.get("user-agent") if request else None)
+        _set_session_cookies(response, token, csrf)
+        state.db.log_event("changed own password", user_id=user.id)
+        return {"ok": True, "csrf_token": csrf}
+
+    # -- account management (admin) ------------------------------------------------------
+    def _admin_count(exclude: str | None = None) -> int:
+        return sum(1 for u in state.db.list_users()
+                   if u["role"] == "admin" and not u["disabled"] and u["id"] != exclude)
+
+    @app.get("/api/users")
+    async def list_accounts(admin: Principal = Depends(require_admin)) -> dict[str, Any]:
+        users = state.db.list_users()
+        for u in users:  # per-user counters let an admin see who is holding the GPU
+            u["active_jobs"] = state.db.active_jobs_for(u["id"])
+            u["outputs"] = state.db.count_outputs(user_id=u["id"])
+        return {"users": users}
+
+    @app.post("/api/users")
+    async def create_account_route(payload: dict[str, Any] = Body(...),
+                                   admin: Principal = Depends(require_admin)) -> dict[str, Any]:
+        try:
+            user = create_account(state.db, str(payload.get("username") or ""),
+                                  str(payload.get("password") or ""),
+                                  role=str(payload.get("role") or "user"),
+                                  display_name=str(payload.get("display_name") or ""))
+        except AuthError as e:
+            raise HTTPException(422, str(e)) from e
+        layout.user_output(user["id"]).mkdir(parents=True, exist_ok=True)
+        state.db.log_event(f"created account {user['username']} ({user['role']})",
+                           user_id=admin.id)
+        return {"user": {k: user[k] for k in ("id", "username", "display_name", "role",
+                                             "created_at")}}
+
+    @app.patch("/api/users/{user_id}")
+    async def update_account(user_id: str, payload: dict[str, Any] = Body(...),
+                             admin: Principal = Depends(require_admin)) -> dict[str, Any]:
+        target = state.db.get_user(user_id)
+        if target is None:
+            raise HTTPException(404, "user not found")
+        wants_role = payload.get("role")
+        wants_disabled = payload.get("disabled")
+        # Lockout guards: an admin must not be able to strand the household without an admin, and
+        # must not be able to demote or disable themselves mid-session.
+        if user_id == admin.id and (wants_role not in (None, "admin") or wants_disabled):
+            raise HTTPException(422, "you cannot demote or disable your own account")
+        losing_admin = target["role"] == "admin" and (
+            (wants_role is not None and wants_role != "admin") or wants_disabled)
+        if losing_admin and _admin_count(exclude=user_id) == 0:
+            raise HTTPException(422, "at least one enabled admin must remain")
+        if wants_role is not None and wants_role not in ("admin", "user"):
+            raise HTTPException(422, "role must be 'admin' or 'user'")
+        fields: dict[str, Any] = {}
+        if payload.get("display_name") is not None:
+            fields["display_name"] = str(payload["display_name"])[:80]
+        if wants_role is not None:
+            fields["role"] = wants_role
+        if wants_disabled is not None:
+            fields["disabled"] = 1 if wants_disabled else 0
+        if payload.get("password"):
+            try:
+                set_password(state.db, user_id, str(payload["password"]))
+            except AuthError as e:
+                raise HTTPException(422, str(e)) from e
+        if fields:
+            state.db.update_user(user_id, **fields)
+            if fields.get("disabled"):
+                state.db.delete_user_sessions(user_id)
+        state.db.log_event(f"updated account {target['username']}: {sorted(set(fields) | ({'password'} if payload.get('password') else set()))}",
+                           user_id=admin.id)
+        fresh = state.db.get_user(user_id) or target
+        return {"user": {k: fresh[k] for k in ("id", "username", "display_name", "role",
+                                               "disabled", "created_at")}}
+
+    @app.delete("/api/users/{user_id}")
+    async def delete_account(user_id: str,
+                             admin: Principal = Depends(require_admin)) -> dict[str, Any]:
+        target = state.db.get_user(user_id)
+        if target is None:
+            raise HTTPException(404, "user not found")
+        if user_id == admin.id:
+            raise HTTPException(422, "you cannot delete your own account")
+        if target["role"] == "admin" and _admin_count(exclude=user_id) == 0:
+            raise HTTPException(422, "at least one enabled admin must remain")
+        state.db.delete_user(user_id)
+        state.db.log_event(f"deleted account {target['username']}", user_id=admin.id)
+        return {"ok": True,
+                "note": f"media kept at output/{layout.user_prefix(user_id)}/"}
+
+    # -- ownership helpers ----------------------------------------------------------------
+    def _owner_scope(user: Principal) -> str | None:
+        """None means "no filter" (admin sees the whole house), else the caller's own id."""
+        return None if user.is_admin else user.id
+
+    def _may_see_job(job: dict[str, Any], user: Principal) -> bool:
+        return user.is_admin or (job.get("user_id") or "") == user.id
+
+    def _media_allowed(type_: str, subfolder: str, filename: str, user: Principal) -> bool:
+        """Is this media the caller's own?
+
+        Outputs: the file must sit under ``users/<caller>/``. Inputs: uploads are flat inside
+        ComfyUI's input dir and namespaced with the uploader's id as a prefix, because LoadImage
+        takes a bare filename and a subfolder would have to be threaded through every workflow.
+        Legacy files (written before accounts existed) belong to nobody and stay admin-only.
+        """
+        if user.is_admin:
+            return True
+        parts = [p for p in f"{unquote(subfolder)}/{unquote(filename)}".split("/") if p not in ("", ".")]
+        if ".." in parts:
+            return False
+        if type_ == "input":
+            return bool(parts) and parts[-1].startswith(f"{user.id}_")
+        return len(parts) >= 3 and parts[0] == "users" and parts[1] == user.id
+
     # -- lifecycle --------------------------------------------------------------------
     @app.on_event("startup")
     async def _startup() -> None:
@@ -193,11 +460,12 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         return out
 
     @app.get("/api/stats")
-    async def stats() -> dict[str, Any]:
+    async def stats(user: Principal = Depends(get_current_user)) -> dict[str, Any]:
         await state.refresh_environment()
         inv = state.registry.inventory
         wstats = state.registry.stats()
-        jobs = state.jobs.snapshot()
+        scope = _owner_scope(user)
+        jobs = state.jobs.snapshot(user_id=user.id)
         comfy_q: dict[str, Any] = {}
         try:
             comfy_q = await state.client.queue()
@@ -215,13 +483,14 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
                 "total_bytes": totals["total_bytes"],
                 "total_gb": round(totals["total_bytes"] / GB, 2),
             },
-            "outputs": {"count": state.db.count_outputs()},
+            "outputs": {"count": state.db.count_outputs(user_id=scope)},
             "jobs": {
                 **jobs,
-                "queued": state.db.count_jobs("queued"),
-                "running": state.db.count_jobs("running") + state.db.count_jobs("submitted"),
-                "completed": state.db.count_jobs("completed"),
-                "failed": state.db.count_jobs("failed"),
+                "queued": state.db.count_jobs("queued", user_id=scope),
+                "running": (state.db.count_jobs("running", user_id=scope)
+                            + state.db.count_jobs("submitted", user_id=scope)),
+                "completed": state.db.count_jobs("completed", user_id=scope),
+                "failed": state.db.count_jobs("failed", user_id=scope),
                 "comfy_queue_running": len(comfy_q.get("queue_running") or []),
                 "comfy_queue_pending": len(comfy_q.get("queue_pending") or []),
             },
@@ -237,6 +506,7 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         status: str | None = None,
         q: str | None = None,
         runnable_only: bool = False,
+        user: Principal = Depends(get_current_user),
     ) -> list[WorkflowSummary]:
         await state.refresh_environment()
         return state.registry.list_summaries(
@@ -244,7 +514,7 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         )
 
     @app.get("/api/workflows/categories")
-    async def workflow_categories() -> dict[str, Any]:
+    async def workflow_categories(user: Principal = Depends(get_current_user)) -> dict[str, Any]:
         await state.refresh_environment()
         stats = state.registry.stats()
         present = list(stats["by_category"])
@@ -258,7 +528,8 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         }
 
     @app.get("/api/workflows/{workflow_id}", response_model=WorkflowDetail)
-    async def workflow_detail(workflow_id: str) -> WorkflowDetail:
+    async def workflow_detail(workflow_id: str,
+                              user: Principal = Depends(get_current_user)) -> WorkflowDetail:
         await state.refresh_environment()
         wf = state.registry.defs.get(workflow_id)
         if wf is None:
@@ -276,7 +547,8 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         return detail
 
     @app.get("/api/workflows/{workflow_id}/validate")
-    async def validate_workflow(workflow_id: str) -> dict[str, Any]:
+    async def validate_workflow(workflow_id: str,
+                                user: Principal = Depends(get_current_user)) -> dict[str, Any]:
         await state.refresh_environment()
         wf = state.registry.defs.get(workflow_id)
         if wf is None:
@@ -289,11 +561,13 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
     async def submit_job(
         payload: JobCreate,
         idempotency_key: str | None = Header(default=None),
+        user: Principal = Depends(get_current_user),
     ) -> dict[str, Any]:
         await state.refresh_environment()
         token = payload.client_token or idempotency_key
         try:
-            job, created = await state.jobs.submit(payload.workflow_id, payload.params, token)
+            job, created = await state.jobs.submit(payload.workflow_id, payload.params, token,
+                                                   user_id=user.id)
         except KeyError as e:
             raise HTTPException(404, str(e)) from e
         except ParamError as e:
@@ -316,37 +590,47 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         offset: int = Query(0, ge=0),
         status: str | None = None,
         workflow_id: str | None = None,
+        user: Principal = Depends(get_current_user),
     ) -> dict[str, Any]:
+        scope = _owner_scope(user)
         rows = state.db.list_jobs(limit=limit, offset=offset, status=status,
-                                 workflow_id=workflow_id)
+                                 workflow_id=workflow_id, user_id=scope)
         return {"jobs": [state.jobs.job_out(r).model_dump() for r in rows],
-                "total": state.db.count_jobs(),
-                "snapshot": state.jobs.snapshot()}
+                "total": state.db.count_jobs(user_id=scope),
+                "snapshot": state.jobs.snapshot(user_id=scope)}
 
     @app.get("/api/jobs/{job_id}")
-    async def get_job(job_id: str) -> dict[str, Any]:
+    async def get_job(job_id: str, user: Principal = Depends(get_current_user)) -> dict[str, Any]:
         job = state.db.get_job(job_id)
-        if job is None:
+        # 404, not 403: whether someone else's job id exists is not the caller's business.
+        if job is None or not _may_see_job(job, user):
             raise HTTPException(404, "job not found")
         data = state.jobs.job_out(job).model_dump()
         data["stage"] = state.jobs._stage.get(job_id)  # noqa: SLF001
         return data
 
     @app.post("/api/jobs/{job_id}/cancel")
-    async def cancel_job(job_id: str) -> dict[str, Any]:
+    async def cancel_job(job_id: str, user: Principal = Depends(get_current_user)) -> dict[str, Any]:
         try:
-            job = await state.jobs.cancel(job_id)
+            job = await state.jobs.cancel(job_id, actor_id=user.id, is_admin=user.is_admin)
         except KeyError as e:
+            raise HTTPException(404, "job not found") from e
+        except PermissionError as e:
+            state.db.log_event("blocked a cancel of someone else's job", job_id=job_id,
+                               level="warn", user_id=user.id)
             raise HTTPException(404, "job not found") from e
         return state.jobs.job_out(job).model_dump()
 
     @app.post("/api/jobs/{job_id}/rerun")
-    async def rerun_job(job_id: str) -> dict[str, Any]:
+    async def rerun_job(job_id: str, user: Principal = Depends(get_current_user)) -> dict[str, Any]:
         job = state.db.get_job(job_id)
-        if job is None:
+        if job is None or not _may_see_job(job, user):
             raise HTTPException(404, "job not found")
         try:
-            new_job, _ = await state.jobs.submit(job["workflow_id"], job.get("params") or {})
+            # Always submitted as the caller: rerunning someone else's job (admin) must not
+            # silently write the new files into the original owner's folder.
+            new_job, _ = await state.jobs.submit(job["workflow_id"], job.get("params") or {},
+                                                 user_id=user.id)
         except (KeyError, ParamError, QueueFull) as e:
             raise HTTPException(422, str(e)) from e
         return state.jobs.job_out(new_job).model_dump()
@@ -358,10 +642,15 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         subfolder: str = "",
         type: str = "output",
         download: bool = False,
+        user: Principal = Depends(get_current_user),
     ):
         root = {"output": layout.comfy_output, "input": layout.comfy_input}.get(type)
         if root is None:
             raise HTTPException(400, "type must be 'output' or 'input'")
+        # Ownership first: the allow-list below only proves the path stays inside the tree, which
+        # is a different question from "is this file yours".
+        if not _media_allowed(type, subfolder, filename, user):
+            raise HTTPException(404, "file not found")
         # A workflow can write into a subdirectory of the output folder (per-batch dirs, frame
         # folders), and the gallery hands that name over with the separator URL-encoded:
         # /api/outputs/frames__s5_v25_set001%2Fframe_0001.png. The server decodes %2F before
@@ -387,9 +676,11 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         workflow_id: str | None = None,
         kind: str | None = None,
         since: str | None = None,
+        user: Principal = Depends(get_current_user),
     ) -> dict[str, Any]:
+        scope = _owner_scope(user)
         rows = state.db.list_outputs(limit=limit, offset=offset, workflow_id=workflow_id,
-                                    kind=kind, since=since)
+                                    kind=kind, since=since, user_id=scope)
         for r in rows:
             # Quote every segment: a nested output name contains '/', and a name with '#' or '?'
             # would otherwise truncate the URL at the query string.
@@ -397,11 +688,12 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
                         f"?type={quote(str(r['type']))}&subfolder={quote(str(r['subfolder']))}")
             wf = state.registry.defs.get(r["workflow_id"])
             r["workflow_name"] = wf.name if wf else r["workflow_id"]
-        return {"outputs": rows, "total": state.db.count_outputs()}
+        return {"outputs": rows, "total": state.db.count_outputs(user_id=scope)}
 
     # -- uploads ----------------------------------------------------------------------
     @app.post("/api/uploads")
-    async def upload_image(file: UploadFile = File(...)) -> dict[str, Any]:
+    async def upload_image(file: UploadFile = File(...),
+                           user: Principal = Depends(get_current_user)) -> dict[str, Any]:
         ext = Path(file.filename or "").suffix.lower()
         if ext not in state.settings.allowed_upload_ext:
             raise HTTPException(415, f"unsupported file type {ext or '(none)'}")
@@ -412,7 +704,9 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         target_dir = layout.uploads
         target_dir.mkdir(parents=True, exist_ok=True)
         token = f"{int(time.time())}_{os.urandom(4).hex()}"
-        final = safe_join(target_dir, f"{token}_{safe_name}")
+        # Uploads live flat in ComfyUI's input dir because LoadImage takes a bare filename; the
+        # uploader's id goes into the name so the listing and /api/outputs can tell them apart.
+        final = safe_join(target_dir, f"{user.id}_{token}_{safe_name}")
 
         size = 0
         with open(final, "wb") as fh:
@@ -427,28 +721,32 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         state.client.invalidate_object_info()
         await state.refresh_environment(force=True)
         return {"name": final.name, "size": size,
-                "url": f"/api/outputs/{final.name}?type=input"}
+                "url": f"/api/outputs/{quote(final.name)}?type=input"}
 
     @app.get("/api/inputs")
-    async def list_inputs(limit: int = 200) -> dict[str, Any]:
+    async def list_inputs(limit: int = 200,
+                          user: Principal = Depends(get_current_user)) -> dict[str, Any]:
         items: list[dict[str, Any]] = []
         for root, prefix in ((layout.comfy_input, ""),):
             if not root.is_dir():
                 continue
             for p in sorted(root.iterdir(), key=lambda x: x.name, reverse=True):
-                if p.is_file() and p.suffix.lower() in state.settings.allowed_upload_ext:
-                    rel = f"{prefix}/{p.name}" if prefix else p.name
-                    items.append({
-                        "name": rel,
-                        "size": p.stat().st_size,
-                        "url": f"/api/outputs/{p.name}?type=input"
-                               + (f"&subfolder={prefix}" if prefix else ""),
-                    })
+                if not (p.is_file() and p.suffix.lower() in state.settings.allowed_upload_ext):
+                    continue
+                if not user.is_admin and not p.name.startswith(f"{user.id}_"):
+                    continue  # a member sees their own uploads, not the house's photo library
+                rel = f"{prefix}/{p.name}" if prefix else p.name
+                items.append({
+                    "name": rel,
+                    "size": p.stat().st_size,
+                    "url": f"/api/outputs/{quote(p.name)}?type=input"
+                           + (f"&subfolder={prefix}" if prefix else ""),
+                })
         return {"inputs": items[:limit]}
 
     # -- models -----------------------------------------------------------------------
     @app.get("/api/models")
-    async def list_models() -> dict[str, Any]:
+    async def list_models(user: Principal = Depends(get_current_user)) -> dict[str, Any]:
         await state.refresh_environment()
         inv = state.registry.inventory
         usage: dict[tuple[str, str], list[str]] = {}
@@ -524,7 +822,8 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         }
 
     @app.get("/api/models/catalog")
-    async def model_catalog(pack: str | None = None) -> dict[str, Any]:
+    async def model_catalog(pack: str | None = None,
+                            user: Principal = Depends(get_current_user)) -> dict[str, Any]:
         raw = state.downloads.catalog()
         items = []
         for e in raw:
@@ -554,14 +853,16 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
                 "downloads_enabled": state.settings.downloads_enabled}
 
     @app.post("/api/models/plan")
-    async def model_plan(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    async def model_plan(payload: dict[str, Any] = Body(...),
+                         admin: Principal = Depends(require_admin)) -> dict[str, Any]:
         ids = payload.get("ids") or []
         if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
             raise HTTPException(422, "ids must be a list of model ids")
         return state.downloads.plan(ids).to_dict()
 
     @app.post("/api/models/downloads")
-    async def start_download(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    async def start_download(payload: dict[str, Any] = Body(...),
+                             admin: Principal = Depends(require_admin)) -> dict[str, Any]:
         ids = payload.get("ids") or []
         approved_bytes = payload.get("approved_bytes")
         approved_hash = str(payload.get("approved_hash") or "")
@@ -579,16 +880,16 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
             raise HTTPException(409, str(e)) from e
 
     @app.get("/api/models/downloads/status")
-    async def download_status() -> dict[str, Any]:
+    async def download_status(admin: Principal = Depends(require_admin)) -> dict[str, Any]:
         return state.downloads.status()
 
     @app.post("/api/models/downloads/cancel")
-    async def cancel_download() -> dict[str, Any]:
+    async def cancel_download(admin: Principal = Depends(require_admin)) -> dict[str, Any]:
         return state.downloads.cancel()
 
     # -- settings ---------------------------------------------------------------------
     @app.get("/api/settings")
-    async def get_settings() -> dict[str, Any]:
+    async def get_settings(admin: Principal = Depends(require_admin)) -> dict[str, Any]:
         return {
             "settings": state.settings.to_public_dict(),
             "editable": list(EDITABLE_FIELDS),
@@ -603,7 +904,8 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         }
 
     @app.put("/api/settings")
-    async def update_settings(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    async def update_settings(payload: dict[str, Any] = Body(...),
+                              admin: Principal = Depends(require_admin)) -> dict[str, Any]:
         changed = {}
         for key, value in (payload or {}).items():
             if key not in EDITABLE_FIELDS:
@@ -622,11 +924,14 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         return {"updated": changed, "settings": state.settings.to_public_dict()}
 
     @app.get("/api/events")
-    async def events(limit: int = Query(50, ge=1, le=500)) -> dict[str, Any]:
-        return {"events": state.db.recent_events(limit)}
+    async def events(limit: int = Query(50, ge=1, le=500),
+                     user: Principal = Depends(get_current_user)) -> dict[str, Any]:
+        # Members see the system feed plus their own activity; the feed is how a member learns that
+        # their job was cancelled or their login failed, and admins need the whole picture.
+        return {"events": state.db.recent_events(limit, user_id=_owner_scope(user))}
 
     @app.post("/api/engine/refresh")
-    async def refresh_engine() -> dict[str, Any]:
+    async def refresh_engine(admin: Principal = Depends(require_admin)) -> dict[str, Any]:
         await state.refresh_environment(force=True)
         return {"ok": True, "engine_error": state.env_error,
                 "workflows": state.registry.stats()}

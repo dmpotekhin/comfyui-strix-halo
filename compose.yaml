@@ -42,5 +42,7 @@ services:
       - video
       - render
 
-    restart: "no"
+    # NET-1: the laptop is the household server now. If the container dies (OOM, GPU reset,
+    # a ComfyUI crash) docker brings it back without anyone touching the laptop.
+    restart: unless-stopped
     stop_grace_period: 30s

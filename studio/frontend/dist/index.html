@@ -17,6 +17,10 @@
       </div>
       <nav id="nav"></nav>
       <div class="sidebar-foot">
+        <div id="user-chip" class="user-chip" hidden>
+          <span id="user-name" class="dim"></span>
+          <a href="#/" id="logout" class="dim" role="button">log out</a>
+        </div>
         Runs on your own machine.<br>
         Nothing is uploaded.
       </div>
@@ -25,6 +29,7 @@
       <div id="view"><div class="empty">Loading…</div></div>
     </main>
   </div>
+  <div id="login" class="login-screen" hidden></div>
   <div id="toasts"></div>
   <script type="module" src="/assets/app.js"></script>
 </body>

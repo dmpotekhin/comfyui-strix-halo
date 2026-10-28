@@ -5,31 +5,12 @@ import json
 import time
 
 import pytest
-from fastapi.testclient import TestClient
 
-from app.api import create_app
 from conftest import CKPT, NODE_INFO, workflow_def, write_png
 
 
 def _index(c):
     return c.app_state.registry
-
-
-@pytest.fixture
-def client(project, settings):
-    project.write_workflow(workflow_def())
-    dist = project.layout.frontend_dist
-    (dist / "assets").mkdir(parents=True, exist_ok=True)
-    (dist / "index.html").write_text("<!doctype html><title>Creator Studio</title>",
-                                     encoding="utf-8")
-    (dist / "assets" / "app.css").write_text("body{color:#fff}", encoding="utf-8")
-    app = create_app(project.layout, settings)
-    with TestClient(app) as c:
-        st = app.state.studio
-        # Startup could not reach ComfyUI, so install the synthetic environment.
-        st.registry.set_environment(project.inventory(), NODE_INFO)
-        c.app_state = st
-        yield c
 
 
 def _job_id(body: dict) -> str:

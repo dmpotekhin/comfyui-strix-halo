@@ -153,7 +153,8 @@ class JobManager:
 
     # -- submission -------------------------------------------------------------------
     async def submit(
-        self, workflow_id: str, params: dict[str, Any], client_token: str | None = None
+        self, workflow_id: str, params: dict[str, Any], client_token: str | None = None,
+        *, user_id: str = "",
     ) -> tuple[dict[str, Any], bool]:
         """Validate, persist and enqueue. Returns (job, created)."""
         if client_token:
@@ -168,6 +169,17 @@ class JobManager:
         if pending >= self.settings.max_queue_depth:
             raise QueueFull(f"queue is full ({pending} waiting); try again later")
 
+        # Fairness: the queue is serial and the GPU is the bottleneck, so one family member
+        # holding a dozen jobs would starve everyone else for an hour. The cap is on their own
+        # unfinished work, not on the global queue.
+        if user_id:
+            mine = self.db.active_jobs_for(user_id)
+            limit = int(self.settings.max_user_active_jobs)
+            if mine >= limit:
+                raise QueueFull(
+                    f"you already have {mine} job(s) queued or running (limit {limit}); "
+                    "wait for one to finish")
+
         wf = self.registry.defs.get(workflow_id)
         if wf is None:
             raise KeyError(f"unknown workflow: {workflow_id}")
@@ -175,6 +187,13 @@ class JobManager:
         # A chain workflow's graph cannot be complete yet: the preprocessor output appears during
         # the run, so the binding is filled at submit time of the *graph*, not of the job.
         graph, resolved = self.registry.validate_and_build(wf, params, allow_pending_chain=True)
+        if user_id:
+            # Ownership is a property of the path: every file this job writes lands in
+            # output/users/<id>/..., which is what the gallery and /api/outputs check against.
+            # Registered in the DB too, but the path is the authority.
+            prefix = f"users/{user_id}"
+            resolved = _prefix_outputs(resolved, prefix)
+            graph = _prefix_outputs(graph, prefix)
         job_id = uuid.uuid4().hex
         job = self.db.create_job(
             job_id=job_id,
@@ -184,33 +203,42 @@ class JobManager:
             graph=graph,
             client_id=new_client_id(),
             client_token=client_token,
+            user_id=user_id,
         )
         self._progress[job_id] = 0.0
         self._stage[job_id] = "queued"
         await self._queue.put(job_id)
-        self.db.log_event(f"queued {wf.id}", job_id=job_id)
+        self.db.log_event(f"queued {wf.id}", job_id=job_id, user_id=user_id)
         return job, True
 
-    async def cancel(self, job_id: str) -> dict[str, Any]:
+    async def cancel(self, job_id: str, *, actor_id: str = "", is_admin: bool = True) -> dict[str, Any]:
+        """Stop a job. Only its owner or an admin may do so.
+
+        The interrupt reaches the whole ComfyUI graph, so an unguarded cancel was a way for one
+        family member to kill another's render — not a theoretical race, a button in the UI.
+        """
         job = self.db.get_job(job_id)
         if job is None:
             raise KeyError(job_id)
+        if not is_admin and (job.get("user_id") or "") != actor_id:
+            raise PermissionError(job_id)
         if job["status"] in TERMINAL:
             return job
 
         if job["status"] == "queued":
             self._cancelled.add(job_id)
             self.db.finish_job(job_id, "cancelled", error="Cancelled before start.")
-            self.db.log_event("cancelled while queued", job_id=job_id)
+            self.db.log_event("cancelled while queued", job_id=job_id, user_id=actor_id)
             return self.db.get_job(job_id) or job
 
         # submitted / running -> ask ComfyUI to stop; never kill a process.
         self._interrupt_requested.add(job_id)
         try:
             await self.client.interrupt()
-            self.db.log_event("interrupt sent to ComfyUI", job_id=job_id)
+            self.db.log_event("interrupt sent to ComfyUI", job_id=job_id, user_id=actor_id)
         except ComfyError as e:
-            self.db.log_event(f"interrupt failed: {e}", job_id=job_id, level="warn")
+            self.db.log_event(f"interrupt failed: {e}", job_id=job_id, level="warn",
+                              user_id=actor_id)
             return self.db.get_job(job_id) or job
         self.db.update_job(job_id, stage="cancelling")
         return self.db.get_job(job_id) or job
@@ -222,12 +250,13 @@ class JobManager:
         position = None
         if job["status"] == "queued":
             position = self._queued_position(job_id)
+        progress = float(self._progress.get(job_id, job.get("progress") or 0.0))
         return JobOut(
             id=job_id,
             workflow_id=job["workflow_id"],
             workflow_name=job.get("workflow_name") or "",
             status=job["status"],
-            progress=float(self._progress.get(job_id, job.get("progress") or 0.0)),
+            progress=progress,
             params=job.get("params") or {},
             prompt_id=job.get("prompt_id"),
             error=job.get("error"),
@@ -237,7 +266,28 @@ class JobManager:
             finished_at=job.get("finished_at"),
             duration_s=job.get("duration_s"),
             queue_position=position,
+            eta_seconds=self._eta_seconds(job, position, progress),
         )
+
+    def _eta_seconds(self, job: dict[str, Any], position: int | None,
+                     progress: float) -> int | None:
+        """Rough wait before this job finishes, from this workflow's own recent run times.
+
+        Deliberately not a live model of the GPU: the queue is serial, so "mean duration × jobs
+        ahead" already tracks reality for a family queue, and inventing precision would only make
+        the number wrong in a more confident way. ``None`` means "no history yet" — the UI then
+        says "estimating" instead of showing a made-up minute count.
+        """
+        if job["status"] in TERMINAL:
+            return None
+        mean = self.db.mean_duration(job["workflow_id"])
+        if not mean:
+            return None
+        if job["status"] == "queued":
+            ahead = position if position is not None else 1
+            return int(mean * ahead)
+        # Running: scale by what is left of the progress bar, floored at a few seconds.
+        return max(3, int(mean * max(0.0, 1.0 - progress)))
 
     def _queued_position(self, job_id: str) -> int | None:
         items = list(self._queue._queue)  # noqa: SLF001 - read-only introspection
@@ -246,12 +296,28 @@ class JobManager:
         except ValueError:
             return None
 
-    def snapshot(self) -> dict[str, Any]:
+    def snapshot(self, *, user_id: str | None = None) -> dict[str, Any]:
+        """Queue state for the UI.
+
+        ``queue_depth`` is global on purpose — the queue *is* shared and serial, so pretending a
+        member has a private queue would misreport the wait. ``my_queued`` tells them how much of
+        it is theirs.
+        """
+        queued = list(self._queue._queue)  # noqa: SLF001 - read-only introspection
+        mine = None
+        if user_id is not None:
+            mine = 0
+            for job_id in queued:
+                row = self.db.get_job(job_id)
+                if row and (row.get("user_id") or "") == user_id:
+                    mine += 1
         return {
             "queue_depth": self._queue.qsize(),
             "running": self._running_job,
             "worker_alive": bool(self._worker and not self._worker.done()),
             "cancelling": sorted(self._interrupt_requested),
+            "my_queued": mine,
+            "max_per_user": int(self.settings.max_user_active_jobs),
         }
 
     # -- worker -----------------------------------------------------------------------
@@ -384,7 +450,7 @@ class JobManager:
         outputs = chain_outputs + self._collect_outputs(entry)
         self.db.add_outputs(job_id, job["workflow_id"], outputs,
                             prompt=_prompt_of(resolved),
-                            params=resolved)
+                            params=resolved, user_id=job.get("user_id") or "")
         self.db.finish_job(job_id, "completed", outputs=outputs)
         self._stage[job_id] = "completed"
         self._progress[job_id] = 1.0
@@ -424,21 +490,26 @@ class JobManager:
             self._progress[job_id] = max(self._progress.get(job_id, 0.0), min(pct, 0.9))
 
         timeout = getattr(wf, "timeout_s", None) or 600.0
+        # Host pipelines write straight into the output tree, so the user's directory is the root
+        # they are given — the tool never sees a path it could escape into someone else's files.
+        owner = job.get("user_id") or ""
+        root = _scoped_root(self.output_root, owner)
         try:
             outputs = await asyncio.to_thread(
-                hosttools.run_host_tool, wf.host_tool, resolved, self.output_root,
+                hosttools.run_host_tool, wf.host_tool, resolved, root,
                 timeout=timeout, on_stage=_stage_cb)
         except hosttools.HostToolError as e:
             self.db.finish_job(job_id, "failed", error=f"{wf.host_tool}: {e}")
-            self.db.log_event(str(e), job_id=job_id, level="error")
+            self.db.log_event(str(e), job_id=job_id, level="error", user_id=owner)
             return None
         except Exception as e:  # a crash here must never leave the job in limbo
             self.db.finish_job(job_id, "failed", error=f"{wf.host_tool} crashed: {e}")
             return None
 
-        self.db.add_outputs(job_id, job["workflow_id"], outputs,
+        self.db.add_outputs(job_id, job["workflow_id"],
+                            [_scope_output(o, owner) for o in outputs],
                             prompt=str(resolved.get("text") or resolved.get("video") or ""),
-                            params=resolved)
+                            params=resolved, user_id=owner)
         return resolved, outputs
 
     async def _run_host_job(self, job_id: str, wf: Any, job: dict[str, Any]) -> None:
@@ -653,6 +724,55 @@ def _prompt_of(resolved: dict[str, Any]) -> str | None:
         if isinstance(v, str) and v:
             return v[:1000]
     return None
+
+
+def _prefix_outputs(node: Any, prefix: str) -> Any:
+    """Rewrite every ``filename_prefix`` in a params dict or graph under ``prefix``.
+
+    ComfyUI's SaveImage/SaveVideo join the prefix with the output dir, so ``users/u_ab12/studio/x``
+    lands in ``output/users/u_ab12/studio/x``. Doing it here — before the graph is persisted — means
+    the stored params and the graph agree with where the files really are, and the gallery can
+    authorise a file by looking at its path alone.
+    """
+    if isinstance(node, dict):
+        out = {}
+        for key, value in node.items():
+            if key == "filename_prefix" and isinstance(value, str):
+                out[key] = value if value.startswith(f"{prefix}/") else f"{prefix}/{value}"
+            else:
+                out[key] = _prefix_outputs(value, prefix)
+        return out
+    if isinstance(node, list):
+        return [_prefix_outputs(v, prefix) for v in node]
+    return node
+
+
+def _scoped_root(output_root: Path, user_id: str) -> Path:
+    """Where a host tool may write: the user's own directory (or the shared root for legacy jobs)."""
+    if not user_id:
+        return output_root
+    if not all(ch.isalnum() or ch == "_" for ch in user_id):
+        raise ValueError(f"invalid user id: {user_id!r}")
+    root = output_root / "users" / user_id
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _scope_output(output: dict[str, Any], user_id: str) -> dict[str, Any]:
+    """Host tools report paths relative to the root they were given; make them project-relative.
+
+    A tool writing ``studio/x.mp4`` into ``output/users/ab12/`` really produced
+    ``output/users/ab12/studio/x.mp4``, and that is what both the gallery URL and the ownership
+    check resolve against. Storing the bare "studio" would 404 for the owner and, worse, collide
+    with the legacy shared directory.
+    """
+    if not user_id:
+        return output
+    scoped = dict(output)
+    sub = str(scoped.get("subfolder") or "")
+    prefix = f"users/{user_id}"
+    scoped["subfolder"] = f"{prefix}/{sub}" if sub else prefix
+    return scoped
 
 
 def now_iso() -> str:

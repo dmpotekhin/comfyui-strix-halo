@@ -36,6 +36,10 @@ class Layout:
         # Directories shared with the ComfyUI container (bind mounts in compose.yaml)
         self.comfy_input = self.root / "input"
         self.comfy_output = self.root / "output"
+        # Per-user media. Every write goes to output/users/<user_id>/... so that isolation is a
+        # property of the path, not a promise in a query filter; files still live inside the one
+        # bind mount the container knows about.
+        self.users_output = self.comfy_output / "users"
         self.comfy_models = self.root / "models"
         self.comfy_workflows = self.root / "workflows"
         # LoadImage lists only the top level of ComfyUI's input folder (verified against
@@ -50,8 +54,19 @@ class Layout:
         return [self.comfy_output, self.comfy_input]
 
     def ensure(self) -> None:
-        for p in (self.data, self.downloads_cache, self.uploads):
+        for p in (self.data, self.downloads_cache, self.uploads, self.users_output):
             p.mkdir(parents=True, exist_ok=True)
+
+    # -- per-user media ----------------------------------------------------------------
+    def user_output(self, user_id: str) -> Path:
+        """``output/users/<id>`` — raises instead of trusting the caller with a raw string."""
+        if not user_id or not all(ch.isalnum() or ch == "_" for ch in user_id):
+            raise PathNotAllowed(f"invalid user id: {user_id!r}")
+        return self.users_output / user_id
+
+    def user_prefix(self, user_id: str) -> str:
+        """The ``subfolder`` prefix every file of this user carries (Posix, no trailing slash)."""
+        return f"users/{user_id}"
 
 
 class PathNotAllowed(Exception):

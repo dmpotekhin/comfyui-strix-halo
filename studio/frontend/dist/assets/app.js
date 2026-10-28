@@ -2,10 +2,12 @@
 // Views render into #view; state lives in this module. Hash routing keeps deep links working
 // (#/run/txt2img-turbo) so a workflow can be bookmarked.
 
-import { api, ApiError } from './api.js';
+import { api, ApiError, auth, UNAUTHORIZED } from './api.js';
 
 const view = document.getElementById('view');
 const nav = document.getElementById('nav');
+const loginScreen = document.getElementById('login');
+const userChip = document.getElementById('user-chip');
 
 /* ------------------------------------------------------------------ helpers */
 
@@ -25,6 +27,15 @@ function fmtDuration(s) {
   if (s < 90) return `${s.toFixed(1)}s`;
   const m = Math.floor(s / 60);
   return `${m}m ${Math.round(s - m * 60)}s`;
+}
+
+/** "waiting ~3 min" — the ETA the server derives from this workflow's recent run times. */
+function fmtEta(j, position) {
+  if (j.eta_seconds == null) return '';
+  const eta = j.eta_seconds < 90 ? `${Math.max(1, Math.round(j.eta_seconds))}s`
+                                 : `${Math.round(j.eta_seconds / 60)} min`;
+  const ahead = position ? ` · ${position} ahead` : '';
+  return `~${eta}${ahead}`;
 }
 
 function fmtWhen(iso) {
@@ -79,15 +90,29 @@ const ROUTES = [
   ['jobs', 'Jobs', '≣'],
   ['gallery', 'Gallery', '▦'],
   ['models', 'Models', '▣'],
-  ['settings', 'Settings', '⚙'],
+  ['settings', 'Settings', '⚙', true],   // admin-only: model downloads and engine controls live here
 ];
 
 function renderNav(active) {
-  nav.innerHTML = ROUTES.map(([id, label, ico]) =>
-    `<a class="nav-item" href="#/${id}" ${active === id ? 'aria-current="page"' : ''}>
+  const isAdmin = auth.isAdmin();
+  nav.innerHTML = ROUTES
+    .filter(([, , , adminOnly]) => isAdmin || !adminOnly)
+    .map(([id, label, ico]) =>
+      `<a class="nav-item" href="#/${id}" ${active === id ? 'aria-current="page"' : ''}>
        <span class="ico">${ico}</span><span>${label}</span>
        <span class="count" data-count="${id}"></span>
      </a>`).join('');
+}
+
+function renderUserChip() {
+  const user = auth.current();
+  if (!userChip) return;
+  userChip.hidden = !user;
+  const nameEl = document.getElementById('user-name');
+  if (nameEl && user) {
+    nameEl.textContent = user.display_name || user.username;
+    nameEl.title = user.is_admin ? 'administrator' : 'member';
+  }
 }
 
 async function updateNavCounts() {
@@ -441,7 +466,9 @@ function watchJob(jobId, form, btn) {
     stageEl.textContent = j.stage || j.status;
     status.innerHTML = `
       <div class="card-head"><h2>Result</h2>${badge(j.status)}
-        <span class="spacer"></span><span class="dim">${fmtDuration(j.duration_s)}</span></div>
+        <span class="spacer"></span>
+        <span class="dim">${j.status === 'queued' || j.status === 'submitted'
+          ? fmtEta(j, j.queue_position) : fmtDuration(j.duration_s)}</span></div>
       <div class="progress" style="margin-bottom:12px"><i style="width:${pct}%"></i></div>
       ${j.error ? `<div class="alert danger">${esc(j.error)}</div>` : ''}
       ${j.outputs?.length
@@ -513,7 +540,8 @@ async function viewJobs() {
         ${(data.jobs || []).map((j) => `<tr data-job="${esc(j.id)}">
           <td class="mono dim">${esc(j.id.slice(0, 8))}</td>
           <td>${esc(j.workflow_name || j.workflow_id)}</td>
-          <td>${badge(j.status)}</td>
+          <td>${badge(j.status)}${['queued', 'submitted'].includes(j.status) && j.eta_seconds != null
+            ? `<div class="dim" style="font-size:11px;margin-top:2px">${esc(fmtEta(j, j.queue_position))}</div>` : ''}</td>
           <td class="num">${Math.round((j.progress || 0) * 100)}%</td>
           <td class="num">${fmtDuration(j.duration_s)}</td>
           <td class="dim">${fmtWhen(j.created_at)}</td>
@@ -668,9 +696,18 @@ const VIEWS = {
   settings: viewSettings,
 };
 
+let booted = false;
+
 async function route() {
+  if (!booted) return;
   const hash = location.hash.replace(/^#\/?/, '') || 'dashboard';
   const [head, arg] = hash.split('/');
+  const entry = ROUTES.find(([id]) => id === head);
+  if (entry?.[3] && !auth.isAdmin()) {
+    toast('That screen is for administrators', true);
+    location.hash = '#/dashboard';
+    return;
+  }
   renderNav(head === 'run' ? 'library' : head);
 
   try {
@@ -691,5 +728,83 @@ async function route() {
   updateNavCounts();
 }
 
+/* ------------------------------------------------------------------ sign-in */
+
+function showLogin(message = '') {
+  booted = false;
+  view.innerHTML = '';
+  nav.innerHTML = '';
+  renderUserChip();
+  document.querySelector('.shell').hidden = true;
+  loginScreen.hidden = false;
+  loginScreen.innerHTML = `
+    <form class="login-card" id="login-form">
+      <div class="brand"><strong>Creator Studio</strong><span>${esc(location.host)}</span></div>
+      <h1>Sign in</h1>
+      <p class="dim" style="margin:0 0 4px">
+        House accounts only. Nothing here talks to the internet.</p>
+      ${message ? `<div class="alert info">${esc(message)}</div>` : ''}
+      <div class="field"><label for="lu">Username</label>
+        <input id="lu" name="username" autocapitalize="none" spellcheck="false"
+               autocomplete="username" required></div>
+      <div class="field"><label for="lp">Password</label>
+        <input id="lp" name="password" type="password" autocomplete="current-password" required></div>
+      <button class="primary" type="submit" style="width:100%">Sign in</button>
+      <div class="alert danger" id="login-error" hidden></div>
+    </form>`;
+  document.getElementById('lu').focus();
+  document.getElementById('login-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const form = ev.target;
+    const btn = form.querySelector('button');
+    const err = document.getElementById('login-error');
+    btn.disabled = true;
+    err.hidden = true;
+    try {
+      await auth.login(form.username.value.trim(), form.password.value);
+      booted = true;
+      loginScreen.hidden = true;
+      loginScreen.innerHTML = '';
+      document.querySelector('.shell').hidden = false;
+      renderUserChip();
+      await route();
+    } catch (e) {
+      err.hidden = false;
+      err.textContent = e.status === 401
+        ? 'Wrong username or password.'
+        : e.status === 429 ? e.message : `Could not sign in: ${e.message}`;
+      form.password.value = '';
+      form.password.focus();
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
+async function boot() {
+  try {
+    await auth.me();
+  } catch (e) {
+    if (e.status === 401) { showLogin(); return; }
+    view.innerHTML = `<div class="alert danger"><strong>Cannot reach the studio backend:</strong>
+      ${esc(e.message)}</div>`;
+    return;
+  }
+  booted = true;
+  document.querySelector('.shell').hidden = false;
+  loginScreen.hidden = true;
+  renderUserChip();
+  await route();
+}
+
+document.getElementById('logout')?.addEventListener('click', async (ev) => {
+  ev.preventDefault();
+  try { await auth.logout(); } catch { /* already gone */ }
+  location.hash = '#/dashboard';
+  showLogin('Signed out.');
+});
+
+// The session can expire while a tab sits open; the first request that comes back 401 lands here.
+window.addEventListener(UNAUTHORIZED, () => showLogin('Session expired — sign in again.'));
 window.addEventListener('hashchange', route);
-route();
+boot();
