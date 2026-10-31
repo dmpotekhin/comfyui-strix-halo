@@ -556,6 +556,20 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         rep = state.registry.report(wf)
         return rep.model_dump()
 
+    @app.get("/api/workflows/{workflow_id}/graph-check")
+    async def graph_check(workflow_id: str,
+                          user: Principal = Depends(get_current_user)) -> dict[str, Any]:
+        """Structural check of a definition against the live node registry.
+
+        Always 200 for a known workflow: the issues are the payload, and warn-first means a
+        broken definition is a report, not an HTTP error. Use POST /api/jobs to run one.
+        """
+        await state.refresh_environment()
+        wf = state.registry.defs.get(workflow_id)
+        if wf is None:
+            raise HTTPException(404, f"unknown workflow: {workflow_id}")
+        return state.registry.check(wf).as_dict()
+
     # -- jobs -------------------------------------------------------------------------
     @app.post("/api/jobs")
     async def submit_job(
@@ -579,10 +593,15 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
             raise HTTPException(500, f"could not queue job: {e}") from e
         out = state.jobs.job_out(job)
         warnings: list[str] = []
+        checks: dict[str, Any] | None = None
         wf = state.registry.defs.get(payload.workflow_id)
         if wf is not None and created:
             warnings = state.registry.preflight(wf, payload.params)
-        return {"job": out.model_dump(), "created": created, "warnings": warnings}
+            preflight = state.jobs.check_of(job["id"])
+            if preflight is not None:
+                checks = preflight.as_dict()
+        return {"job": out.model_dump(), "created": created, "warnings": warnings,
+                "checks": checks}
 
     @app.get("/api/jobs")
     async def list_jobs(

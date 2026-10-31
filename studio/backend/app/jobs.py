@@ -31,7 +31,9 @@ from .comfy import (
     new_client_id,
 )
 from .db import Database, utcnow
+from .graphcheck import CheckResult, blocks_submission, check_graph
 from .registry import ParamError, Registry
+from .revisions import graph_revision, revision_of, short as short_revision
 from .schemas import JobOut, OutputRef
 
 log = logging.getLogger(__name__)
@@ -84,6 +86,9 @@ class JobManager:
         self._ws_tasks: dict[str, asyncio.Task[None]] = {}
         self._client: ComfyClientProtocol | None = None
         self._lock = asyncio.Lock()
+        # Preflight results for jobs submitted by this process, so the API can return the
+        # structured issues without rebuilding the graph (which would re-randomise seeds).
+        self._checks: dict[str, CheckResult] = {}
 
     # -- lifecycle --------------------------------------------------------------------
     async def start(self) -> None:
@@ -194,6 +199,23 @@ class JobManager:
             prefix = f"users/{user_id}"
             resolved = _prefix_outputs(resolved, prefix)
             graph = _prefix_outputs(graph, prefix)
+        # Preflight: the graph about to be posted is checked against the *live* node registry.
+        # Warn-first means this never blocks (see docs/WORKFLOW_GRAPH_CHECK.md); strict mode is
+        # an explicit opt-in switch for later, when the shipped definitions are known-clean.
+        definition_rev = revision_of(wf)
+        graph_rev = graph_revision(graph)
+        checks = check_graph(
+            graph,
+            node_info=getattr(self.registry, "node_info", {}) or {},
+            inventory=getattr(self.registry, "inventory", None),
+            workflow_id=wf.id,
+            revision=graph_rev,
+            mode=str(wf.execution or "graph"),
+        )
+        if blocks_submission(checks, strict=bool(getattr(self.settings, "graph_strict", False))):
+            raise ParamError({f"{i.node_id or '-'}.{i.field or '-'}": i.message
+                              for i in checks.errors})
+
         job_id = uuid.uuid4().hex
         job = self.db.create_job(
             job_id=job_id,
@@ -204,12 +226,30 @@ class JobManager:
             client_id=new_client_id(),
             client_token=client_token,
             user_id=user_id,
+            workflow_revision=definition_rev,
+            graph_revision=graph_rev,
         )
+        self._remember_checks(job_id, checks)
+        if checks.issues:
+            self.db.log_event(
+                f"preflight {wf.id}: {len(checks.errors)} error(s), "
+                f"{len(checks.warnings)} warning(s); warn-first, job queued "
+                f"(revision {short_revision(definition_rev)}/{short_revision(graph_rev)})",
+                job_id=job_id, level="warn" if checks.has_errors else "info", user_id=user_id)
         self._progress[job_id] = 0.0
         self._stage[job_id] = "queued"
         await self._queue.put(job_id)
         self.db.log_event(f"queued {wf.id}", job_id=job_id, user_id=user_id)
         return job, True
+
+    def _remember_checks(self, job_id: str, checks: CheckResult) -> None:
+        self._checks[job_id] = checks
+        while len(self._checks) > 500:          # bounded: this is a convenience, not history
+            self._checks.pop(next(iter(self._checks)))
+
+    def check_of(self, job_id: str) -> CheckResult | None:
+        """The preflight result produced when this job was submitted, if still in memory."""
+        return self._checks.get(job_id)
 
     async def cancel(self, job_id: str, *, actor_id: str = "", is_admin: bool = True) -> dict[str, Any]:
         """Stop a job. Only its owner or an admin may do so.
@@ -267,6 +307,8 @@ class JobManager:
             duration_s=job.get("duration_s"),
             queue_position=position,
             eta_seconds=self._eta_seconds(job, position, progress),
+            workflow_revision=job.get("workflow_revision"),
+            graph_revision=job.get("graph_revision"),
         )
 
     def _eta_seconds(self, job: dict[str, Any], position: int | None,

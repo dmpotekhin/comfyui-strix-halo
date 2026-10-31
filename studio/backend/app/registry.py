@@ -23,6 +23,7 @@ from typing import Any, Iterable
 
 from pydantic import ValidationError as PydanticValidationError
 
+from .graphcheck import CheckResult, check_workflow
 from .inventory import Inventory, analyze, combo_options
 from .media import png_has_alpha
 from .schemas import (  # noqa: F401  (CATEGORY_ALIASES/canonical_category re-exported)
@@ -395,6 +396,10 @@ class Registry:
                     f"verified. ComfyUI builds masks from the alpha channel only."
                 )
         return warnings
+
+    def check(self, wf: WorkflowDef) -> CheckResult:
+        """Structural and runtime validation of a definition. Read-only by construction."""
+        return check_workflow(wf, node_info=self.node_info, inventory=self.inventory)
 
     def validate_and_build(
         self, wf: WorkflowDef, params: dict[str, Any], *, chain_input: str | None = None,

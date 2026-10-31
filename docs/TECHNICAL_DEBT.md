@@ -93,6 +93,12 @@ Effort: **S** ≤ 1 day, **M** 2-3 days, **L** ≥ 1 week (one senior dev, this 
 * **Task**: content hash of the definition stored in `jobs.workflow_rev`, plus a `workflow_versions`
   table (hash, body, created_at). Additive migration.
 * **Effort**: S-M. **Risk**: low.
+* **Status (2026-11-01): RESOLVED for identity, partially for history.** `app/revisions.py` hashes
+  the canonical definition (`workflow_revision`) and the built API graph (`graph_revision`); both are
+  columns on `jobs` (migration v2), NULL for older rows. Rules in `docs/WORKFLOW_REVISIONS.md`,
+  pinned by `tests/test_revisions.py`. Still open: a `workflow_versions` table storing the bodies, so
+  an old revision can be *restored* rather than merely identified — that needs a decision on where
+  definition bodies live.
 
 ### TD-8 · No migration framework; the first non-additive change is unowned
 * **Evidence**: `db.py` `_ADDED_COLUMNS` + `CREATE TABLE IF NOT EXISTS`; no `schema_version`.
@@ -101,6 +107,13 @@ Effort: **S** ≤ 1 day, **M** 2-3 days, **L** ≥ 1 week (one senior dev, this 
 * **Task**: `schema_version` table + ordered migration list with a test that migrates an empty DB and a
   seeded old DB.
 * **Effort**: S. **Risk**: low. **Do it before Phase 1 tables, not after.**
+* **Status (2026-11-01): RESOLVED.** `CURRENT_SCHEMA_VERSION` + `MIGRATIONS` in `app/db.py`; applied
+  steps live in `schema_migrations`, mirrored to `PRAGMA user_version`; each step is idempotent by
+  construction and runs in its own transaction, so a failure rolls back whole and leaves the file
+  usable by the previous build. `tests/test_db_migrations.py` covers a pre-account schema, an
+  account-but-no-revision schema, idempotent reopen, and a deliberately broken step. Verified against
+  a copy of the production file: 130 jobs / 144 outputs / 3 users / 357 events unchanged, two columns
+  added (`docs/schema-migrations.md`).
 
 ### TD-9 · Frontend: one 810-line file, hand-rolled router, no component model
 * **Evidence**: `dist/assets/app.js` 810 lines, `api.js` 129, `index.html` 36; no build step, no
@@ -122,6 +135,15 @@ Effort: **S** ≤ 1 day, **M** 2-3 days, **L** ≥ 1 week (one senior dev, this 
   output type with the consumer's required input type; report as `type_mismatch` in the validation
   response. Pure function, unit-testable without the engine (fixture from `/object_info` snapshot).
 * **Effort**: M. **Risk**: low. **Highest value per line of code in Phase 2.**
+* **Status (2026-11-01): RESOLVED.** `app/graphcheck.py` validates node classes, required inputs,
+  literal types, combo options, link targets, link slots, link types and weight files against the
+  live `/object_info`, split by execution mode (graph / host / chain). Structured issues
+  (`severity`, `code`, `node_id`, `field`, `message`), 19 codes, warn-first policy with strict mode
+  behind `Settings.graph_strict`. Surfaces: `GET /api/workflows/{id}/graph-check`, `checks` on the
+  submit response, and `studio/tools/check_registry.py`. Measured on the shipped registry: 127
+  definitions (40 graph / 82 host / 5 chain), 125 clean, 2 warnings, 0 errors
+  (`docs/WORKFLOW_GRAPH_CHECK.md`). Still open: required-input *value* checking (a combo default that
+  is not installed), and repair suggestions — out of scope by design (warn-first, no auto-fix).
 
 ### TD-11 · Uploads validated by extension only
 * **Evidence**: `api.py:699-717` — suffix allow-list + size cap; no magic bytes, no per-user quota.
@@ -192,7 +214,7 @@ Effort: **S** ≤ 1 day, **M** 2-3 days, **L** ≥ 1 week (one senior dev, this 
 | Phase | Must clear first |
 |---|---|
 | 1 (foundation) | TD-1, TD-8, TD-2 (partial: jobs/models routers), TD-11 |
-| 2 (workflow intelligence) | TD-10, TD-7, TD-6 (only if an LLM layer is approved) |
+| 2 (workflow intelligence) | ~~TD-10~~, ~~TD-7~~, TD-6 (only if an LLM layer is approved) — the first two shipped 2026-11-01 |
 | 3 (model/hardware intelligence) | TD-3, TD-4, TD-5, TD-13 |
 | 4 (knowledge/learning) | TD-7 (history identity) |
 | 5 (studio) | TD-9, TD-15 |

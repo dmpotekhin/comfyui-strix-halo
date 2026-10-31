@@ -246,6 +246,10 @@ class JobOut(BaseModel):
     duration_s: float | None = None
     queue_position: int | None = None
     eta_seconds: int | None = None
+    # Which definition and which built graph this row actually ran (app/revisions.py).
+    # NULL for jobs queued before revisions existed — never back-filled with a guess.
+    workflow_revision: str | None = None
+    graph_revision: str | None = None
 
 
 class HealthOut(BaseModel):

@@ -55,10 +55,10 @@ project's own status docs and **not** re-measured here.
 | C1 | Workflow Architect (natural language → definition) | NOT_IMPLEMENTED | **no LLM integration anywhere**: `grep -i "openai\|anthropic\|ollama"` over `app/` returns only llama.cpp VLM terms. Definitions are authored by generator scripts (`tools/gen_stage5_workflows.py`, 1 191 lines) | — |
 | C2 | Runtime node registry | IMPLEMENTED | `comfy.object_info` (cached, `comfy.py:143`), `Registry.set_environment:178`, `Inventory` node analysis, 675 classes reported by docs | `test_registry.py`, `test_registry_real.py` (11) |
 | C3 | Deterministic builder | IMPLEMENTED | `registry.validate_and_build:399` — coercion, enum membership from live options, seed handling, `bind` application | `test_registry.py` (28), `test_preflight_options.py` (14) |
-| C4 | Workflow validator | PARTIALLY_IMPLEMENTED | statuses `incompatible / missing_nodes / planned / ready` + `/api/workflows/{id}/validate` (`api.py:549`); `_validate_required_graph_inputs:589` | validates presence and bindings; **does not type-check inputs against `/object_info` specs**, no memory check |
+| C4 | Workflow validator | IMPLEMENTED | statuses `incompatible / missing_nodes / planned / ready` + `/api/workflows/{id}/validate` (`api.py:549`); `_validate_required_graph_inputs:589`; **`app/graphcheck.py`** — class/required-input/literal-type/combo/link/slot/link-type/model-file checks against live `/object_info`, split by execution mode (graph 40 / host 82 / chain 5), 19 codes, structured issues; `GET /api/workflows/{id}/graph-check`; preflight on every submit; `tools/check_registry.py` | `test_graphcheck.py` (27), `test_step2_preflight.py` (10), full registry: 127 checked, 125 clean, 2 warnings, 0 errors |
 | C5 | Workflow explainer | PARTIALLY_IMPLEMENTED | per-definition `description`, `notes`, per-param `description`; readiness `detail` strings | no graph-level explanation (data flow, per-node purpose) |
 | C6 | Workflow repair agent | NOT_IMPLEMENTED | `POST /api/jobs/{id}/rerun` (`api.py:624`) only re-submits; `jobs._extract_error:705` extracts node errors, nothing acts on them | — |
-| C7 | Workflow version control | PARTIALLY_IMPLEMENTED | JSON definitions are in git; a job records `workflow_id`, not the definition revision | no rollback, no diff view, no version pinning per job |
+| C7 | Workflow version control | PARTIALLY_IMPLEMENTED | JSON definitions are in git; **`app/revisions.py`** stores `workflow_revision` + `graph_revision` (SHA-256 of canonical JSON) on every job, NULL for legacy rows; rules in `docs/WORKFLOW_REVISIONS.md`; schema v2 via `schema_migrations` | identity only: no `workflow_versions` body store, no rollback, no diff view, no pinning by revision |
 | C8 | Workflow benchmark database | NOT_IMPLEMENTED | see A10 | — |
 
 ## D. AI knowledge base and learner
@@ -173,12 +173,12 @@ project's own status docs and **not** re-measured here.
 
 | # | Requirement | Status | Evidence |
 |---|---|---|---|
-| J1 | Unit tests exist | IMPLEMENTED | 274 `def test_*` across 18 files (`STATIC` count 2026-10-31; 297 executed after parametrisation) |
-| J2 | Suite passes | IMPLEMENTED | **executed 2026-10-31**: 297 tests, 0 failures, 0 errors, 0 skipped, 29 s, coverage 70.3 % (`studio/cache/audit/junit.xml`, `coverage.json`); regenerated into `docs/STATUS.md` | — |
+| J1 | Unit tests exist | IMPLEMENTED | 328 `def test_*` across 23 files (`STATIC` count 2026-11-01; 371 executed after parametrisation) |
+| J2 | Suite passes | IMPLEMENTED | **executed 2026-11-01**: 371 tests, 0 failures, 0 errors, 0 skipped, 29.5 s, coverage 72.1 % (`studio/cache/audit/junit.xml`, `coverage.json`); regenerated into `docs/STATUS.md` | — |
 | J3 | ComfyUI integration tests | PARTIALLY_IMPLEMENTED | `test_integration_comfy.py` (5 tests) skipped unless the engine is up |
 | J4 | End-to-end UI verification | PARTIALLY_IMPLEMENTED | `visual-app-audit` results quoted in `implementation_status.md:54`; no automated e2e in the repo |
 | J5 | Regressions on existing workflows | PARTIALLY_IMPLEMENTED | `test_stage5_workflows.py`, `test_stage_t_workflows.py` cover structure + some real host runs |
-| J6 | Coverage measurement | NOT_IMPLEMENTED | no `pytest-cov` in `requirements.txt` |
+| J6 | Coverage measurement | IMPLEMENTED | `pytest-cov==7.1.0` in `studio/requirements.txt`; every full run writes `cache/audit/coverage.json` + `junit.xml`; 72.1 % (3055/4238) rendered into `docs/STATUS.md` |
 | J7 | CI | NOT_IMPLEMENTED | no workflow config in the tree |
 
 ---
@@ -187,14 +187,16 @@ project's own status docs and **not** re-measured here.
 
 | Status | Count |
 |---|---:|
-| IMPLEMENTED | 34 |
-| PARTIALLY_IMPLEMENTED | 26 |
-| NOT_IMPLEMENTED | 36 |
+| IMPLEMENTED | 36 |
+| PARTIALLY_IMPLEMENTED | 25 |
+| NOT_IMPLEMENTED | 35 |
 | BROKEN | 0 |
 | NEEDS_VERIFICATION | 0 |
 
 (96 classified rows; counted from this file, not estimated. J2 moved to IMPLEMENTED on 2026-10-31
-after the suite was actually executed: 297 passed, 70.3 % coverage — see `docs/STATUS.md`.)
+after the suite was actually executed; C4 moved to IMPLEMENTED on 2026-11-01 after the validator was
+written and run over all 127 shipped definitions. Current run: 371 passed, 72.1 % coverage — see
+`docs/STATUS.md`.)
 
 The shape matters more than the totals: everything that touches **execution** (queue, builder,
 registry, host tools, downloads, auth, isolation) is implemented and tested; everything named

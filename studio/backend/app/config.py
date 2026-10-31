@@ -40,6 +40,12 @@ class Settings:
     login_window_s: float = 600.0
     login_cooldown_s: float = 300.0
 
+    # --- Workflow validation -------------------------------------------------------
+    # Warn-first is the shipped behaviour: preflight issues are reported and the job is still
+    # queued. Turning this on makes error-severity issues refuse the submission (HTTP 422).
+    # It stays off until the shipped definitions are known-clean — see docs/WORKFLOW_GRAPH_CHECK.md.
+    graph_strict: bool = False
+
     # --- Queue / resources ---------------------------------------------------------
     max_queue_depth: int = 100        # refuse new jobs beyond this
     one_at_a_time: bool = True        # a single heavy worker (model swaps are expensive)

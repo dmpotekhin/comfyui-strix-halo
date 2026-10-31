@@ -29,6 +29,9 @@ CREATE TABLE IF NOT EXISTS jobs (
     outputs       TEXT NOT NULL DEFAULT '[]',
     client_token  TEXT,
     user_id       TEXT NOT NULL DEFAULT '',
+    -- What actually ran (app/revisions.py). NULL for jobs queued before revisions existed.
+    workflow_revision TEXT,
+    graph_revision    TEXT,
     created_at    TEXT NOT NULL,
     started_at    TEXT,
     finished_at   TEXT,
@@ -91,6 +94,13 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS sessions_expiry_idx ON sessions(expires_at);
+
+-- Applied schema migrations, one row per version. PRAGMA user_version mirrors the highest one.
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version     INTEGER PRIMARY KEY,
+    description TEXT NOT NULL DEFAULT '',
+    applied_at  TEXT NOT NULL
+);
 """
 
 # Indexes that depend on columns which older databases only get through _migrate(), so they cannot
@@ -101,11 +111,47 @@ CREATE INDEX IF NOT EXISTS jobs_user_idx ON jobs(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS outputs_user_idx ON outputs(user_id, id DESC);
 """
 
-# Columns added after the first release. (table, column, ddl)
-_ADDED_COLUMNS = (
-    ("jobs", "user_id", "TEXT NOT NULL DEFAULT ''"),
-    ("outputs", "user_id", "TEXT NOT NULL DEFAULT ''"),
-    ("events", "user_id", "TEXT NOT NULL DEFAULT ''"),
+#: The schema version this build creates and expects.
+#:
+#: 1 — accounts: ``user_id`` on jobs, outputs, events.
+#: 2 — workflow revisions: ``workflow_revision`` / ``graph_revision`` on jobs.
+CURRENT_SCHEMA_VERSION = 2
+
+MIGRATIONS_TABLE = """
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version     INTEGER PRIMARY KEY,
+    description TEXT NOT NULL DEFAULT '',
+    applied_at  TEXT NOT NULL
+);
+"""
+
+
+def _add_column(table: str, column: str, ddl: str):
+    """A migration step that adds a column only when it is really absent."""
+
+    def statement(conn: sqlite3.Connection) -> str | None:
+        cols = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column in cols:
+            return None
+        return f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"
+
+    statement.__name__ = f"add_column_{table}_{column}"
+    return statement
+
+
+#: Sequential, idempotent schema migrations. Never edit a shipped step: append a new one.
+#: Each entry is (version, description, steps); a step is SQL text or a callable taking the
+#: connection and returning SQL text (or None to skip).
+MIGRATIONS: tuple[tuple[int, str, tuple], ...] = (
+    (1, "accounts: user_id on jobs, outputs, events", (
+        _add_column("jobs", "user_id", "TEXT NOT NULL DEFAULT ''"),
+        _add_column("outputs", "user_id", "TEXT NOT NULL DEFAULT ''"),
+        _add_column("events", "user_id", "TEXT NOT NULL DEFAULT ''"),
+    )),
+    (2, "workflow revisions on jobs", (
+        _add_column("jobs", "workflow_revision", "TEXT"),
+        _add_column("jobs", "graph_revision", "TEXT"),
+    )),
 )
 
 
@@ -125,22 +171,69 @@ class Database:
             self._conn.execute("PRAGMA synchronous=NORMAL")
             self._conn.execute("PRAGMA foreign_keys=ON")
             self._conn.executescript(SCHEMA)
-            self._migrate()
+            try:
+                self._run_migrations()
+            except Exception:
+                self._conn.close()      # never hand back a database that is half migrated
+                raise
             self._conn.executescript(INDEXES)
             self._conn.commit()
 
-    def _migrate(self) -> None:
-        """Add columns introduced after the first release to an existing database.
+    # -- schema versioning ------------------------------------------------------------
+    def _run_migrations(self) -> None:
+        """Bring the schema up to CURRENT_SCHEMA_VERSION, one recorded step at a time.
 
-        The studio shipped without accounts; a family upgrade must not require deleting the history
-        (239 MB of outputs are referenced by it), so the new ownership columns are added in place and
-        every pre-existing row keeps ``user_id = ''`` — visible to admins only.
+        The studio shipped before accounts and before workflow revisions existed, and the job
+        history is the family's archive: it is upgraded in place, never recreated. Every step is
+        idempotent by construction (``_add_column`` inspects the table first), so a database that
+        predates ``schema_migrations`` — or one that is half-way through a step — converges without
+        losing a single row.
+
+        Every step runs inside an explicit transaction: a failing migration rolls back whole and
+        the version pointer stays where it was, leaving the database usable by the older build.
         """
-        for table, column, ddl in _ADDED_COLUMNS:
-            cols = {r["name"] for r in self._conn.execute(f"PRAGMA table_info({table})")}
-            if column not in cols:
-                self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(MIGRATIONS_TABLE)
+            applied = {row[0] for row in self._conn.execute(
+                "SELECT version FROM schema_migrations")}
+            for version, description, steps in MIGRATIONS:
+                if version in applied:
+                    continue
+                self._apply_migration(version, description, steps)
+
+    def _record_migration(self, version: int, description: str, note: str = "") -> None:
+        self._conn.execute(
+            "INSERT OR REPLACE INTO schema_migrations (version, description, applied_at)"
+            " VALUES (?,?,?)",
+            (int(version), f"{description}{(' [' + note + ']') if note else ''}", utcnow()))
+        self._conn.execute(f"PRAGMA user_version = {int(version)}")
+
+    def _apply_migration(self, version: int, description: str, steps: tuple) -> None:
+        with self._lock:
+            try:
+                self._conn.execute("BEGIN IMMEDIATE")
+                for step in steps:
+                    sql = step(self._conn) if callable(step) else step
+                    if sql:
+                        self._conn.execute(sql)
+                self._record_migration(version, description)
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
+
+    def schema_version(self) -> int:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT COALESCE(MAX(version), 0) FROM schema_migrations").fetchone()
+        return int(row[0]) if row else 0
+
+    def migration_history(self) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT version, description, applied_at FROM schema_migrations"
+                " ORDER BY version").fetchall()
+        return [dict(r) for r in rows]
 
     def close(self) -> None:
         with self._lock:
@@ -150,15 +243,18 @@ class Database:
     def create_job(self, *, job_id: str, workflow_id: str, workflow_name: str,
                    params: dict[str, Any], graph: dict[str, Any] | None,
                    client_id: str, client_token: str | None,
-                   status: str = "queued", user_id: str = "") -> dict[str, Any]:
+                   status: str = "queued", user_id: str = "",
+                   workflow_revision: str | None = None,
+                   graph_revision: str | None = None) -> dict[str, Any]:
         now = utcnow()
         with self._lock:
             self._conn.execute(
                 "INSERT INTO jobs (id, workflow_id, workflow_name, status, params, graph,"
-                " client_id, client_token, user_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                " client_id, client_token, user_id, workflow_revision, graph_revision,"
+                " created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 (job_id, workflow_id, workflow_name, status, json.dumps(params),
                  json.dumps(graph) if graph is not None else None,
-                 client_id, client_token, user_id, now),
+                 client_id, client_token, user_id, workflow_revision, graph_revision, now),
             )
             self._conn.commit()
         job = self.get_job(job_id)

@@ -47,6 +47,9 @@ python3 deploy/caddy/verify_lan_access.py   # 18 checks: auth, proxy, WebSocket,
 | `docs/SECURITY_REVIEW.md` | controls verified, findings S-1…S-9, privacy review |
 | `docs/STATUS.md` | **generated** — branch/HEAD, last real test run, coverage, capability counts. Do not hand-edit |
 | `docs/REFERENCE_RUNS.md` | **generated** — the four reference runs: wall vs engine time, parameters, artefacts, memory |
+| `docs/WORKFLOW_GRAPH_CHECK.md` | the validator: three execution modes, 19 issue codes, warn-first vs strict |
+| `docs/WORKFLOW_REVISIONS.md` | what a workflow revision hash covers, what it deliberately ignores |
+| `docs/schema-migrations.md` | `schema_version`, the migration steps, and the verified upgrade of the real database |
 
 ## Repository hygiene
 
@@ -55,8 +58,8 @@ Models, generated media, virtualenvs, caches and credentials are deliberately no
 `*.onnx`, `*.gguf`, `*.pth`, `.env`, `studio/data/`, `users.json`. The LAN door's password
 store lives outside the repository at `~/.config/comfyui-caddy/users.json` (mode `0600`).
 
-Tests: `cd studio && ./.venv/bin/python -m pytest backend/tests -q` — 297 executed (274 declared
-functions plus parametrisation), 0 failures, 70.3% statement coverage, 29 s, measured 2026-10-31 on
+Tests: `cd studio && ./.venv/bin/python -m pytest backend/tests -q` — 371 executed (328 declared
+functions plus parametrisation), 0 failures, 72.1% statement coverage, 29.5 s, measured 2026-11-01 on
 this machine. Numbers are regenerated into `docs/STATUS.md` by
 `python3 studio/tools/gen_status.py`; `--check` fails when that file is stale, so the figures in the
 repository cannot silently drift again.
