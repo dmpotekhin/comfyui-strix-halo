@@ -78,8 +78,12 @@ claims milliseconds).
 (3, 'execution telemetry ledger', <timestamp>)
 ```
 
-Verified on a **copy of the production database** (130 jobs, v2) before this was committed: migration
-applies, `job_telemetry` appears empty, old jobs keep working, `schema_migrations` gains row 3.
+Verified on a **copy of the production database** before this was committed. The live database turned
+out to still be at the v1 era (no `schema_migrations` table at all, 130 jobs), so the copy exercised the
+full path in one run: v1 → 1 → 2 → 3. All three migrations recorded, `job_telemetry` created empty, the
+130 existing jobs and their outputs untouched, and the two live jobs added afterwards landed in the
+ledger. The production file itself was **not** migrated in place — the running service still holds the
+old schema and will migrate on its next restart.
 
 ---
 
@@ -223,7 +227,9 @@ Example (shape, from the live run below):
 ## 7. Live verification on this machine
 
 Run on 2026-11-01 against the real engine (ComfyUI up, models loaded), writing into a **copy** of the
-production database so the live history stayed untouched:
+production database so the live history stayed untouched. Both jobs were genuinely executed (the graph
+run was not served from cache — `engine_ms` is 881 ms, and the 302 ms gap to `execution_ms` is the
+Studio's own submission overhead):
 
 ```
 job            workflow        type   timing_source  queue  exec   total  engine  mem before/peak/after
