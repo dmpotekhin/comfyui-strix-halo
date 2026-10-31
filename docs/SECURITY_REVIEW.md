@@ -157,7 +157,7 @@ queue-position cap per user; no security control needed beyond that.
 | No upload of private files to third parties | **Met** | the only egress is `downloads.py`, allow-listed hosts, user-initiated, one-way |
 | No telemetry/analytics | **Met** | no analytics code, no external fonts/CDN in `index.html` (`font-src 'self' data:`) |
 | Secrets not in logs | **Met** | verified by reading log statements |
-| Model provenance visible | **Partially** | 19/23 files catalogued (TD-13) |
+| Model provenance visible | **Partially** | 19 catalogue rows vs 12 weight files on disk (44.92 GB) — 7 rows are not downloaded, and files dropped into `models/` by hand are never catalogued (TD-13) |
 | Licence obligations visible | **Partially** | `licence` per catalog row, `notes` per workflow (e.g. SDXL Turbo is CC BY-NC-SA — non-commercial) |
 
 One product-level privacy note worth stating plainly: **generated content is encrypted at rest

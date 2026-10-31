@@ -226,3 +226,38 @@ genuinely absent "intelligence" layers that the brief assumes exist, and (c) hot
 
 Nothing in this audit is a recommendation to rewrite. The foundation is sound enough to grow; the
 constraints are documented in `docs/TECHNICAL_DEBT.md` and sequenced in `docs/ROADMAP.md`.
+
+## 11. Corrections found during Phase 1 (measured, not read)
+
+Two premises in the brief do not match this machine. Both change the design, so they are recorded
+here rather than in a comment somewhere.
+
+**C-1 · Unified memory is 30.5 GB, not 128 GB.**
+`/proc/meminfo` → `MemTotal: 31961252 kB` (30.5 GiB), `free -g` → 30 total / 23 available;
+`lscpu` → `AMD RYZEN AI MAX+ 395 w/ Radeon 8060S`, 16 cores / 32 threads; `systemd-detect-virt` →
+none (not a VM). So this is the real device with a 32 GB memory configuration, not the 128 GB
+configuration the brief describes. Consequences:
+
+* every memory estimate must be built for a ~30 GB budget, not ~128 GB;
+* WAN 2.2 5B fp16 (10.0 GB diffusion model + 6.3 GB text encoder + 1.4 GB VAE ≈ 18 GB of weights)
+  is already close to the ceiling before activations, which is consistent with the observed
+  27-minute render and with the box being single-user in practice;
+* adding a local LLM for the Architect (TD-6) is **not** free: a 7B Q4 model is ~4-5 GB, a 14B is
+  ~9 GB, and either one must be unloaded before a video render starts. This is exactly why the
+  memory manager has to precede the agent layer, as the user's priority order states.
+
+**C-2 · `/system_stats` reports a 96 GB VRAM ceiling on a 30.5 GB machine.**
+Live: `vram_total_gb 96.0`, `vram_free_gb 88.8`, while sysfs says `mem_info_vram_used` = 8.33 GB and
+the whole machine has 30.5 GB of RAM. That 96 GB is the ROCm GTT aperture limit, not physical memory.
+Consequences — this is a **design trap** for the scheduler that Phase 1 item 6 must not fall into:
+
+* an estimator that trusts `vram_free` would happily schedule a second 18 GB workload believing 88 GB
+  is free, and the box would swap or OOM-kill instead of refusing;
+* the authoritative budget is `/proc/meminfo` `MemAvailable` plus the sysfs GTT/vram counters, with
+  `/system_stats` used only for "is the engine alive" and for cross-checking;
+* this also upgrades FEATURE_MATRIX row A1 (Unified Memory Monitor) from "snapshot only" to
+  "snapshot of a number that is not the budget" — still PARTIALLY_IMPLEMENTED, but the missing part
+  is now precisely known and testable.
+
+**C-3 · Weight inventory is 12 files / 44.92 GB** (10 `.safetensors`, 2 `.pth`), not 23 files /
+50.54 GB as `docs/model_inventory.md` states. Details in `TD-13`.

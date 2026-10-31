@@ -11,3 +11,4 @@ websockets==17.3           # ComfyUI progress stream
 # test-only
 pytest==9.1.1
 pytest-asyncio==1.4.1
+pytest-cov==7.1.0          # coverage; docs/STATUS.md is generated from its JSON artefact

@@ -43,8 +43,10 @@ python3 deploy/caddy/verify_lan_access.py   # 18 checks: auth, proxy, WebSocket,
 | `docs/ARCHITECTURE.md` | how the pieces fit today, with the bottlenecks named |
 | `docs/FEATURE_MATRIX.md` | every proposed feature classified against real source files |
 | `docs/TECHNICAL_DEBT.md` | prioritised debt with evidence and effort |
-| `docs/ROADMAP.md` | proposed sequence — **awaiting approval** |
+| `docs/ROADMAP.md` | approved sequence (Phase 1 order fixed by the owner 2026-10-31) |
 | `docs/SECURITY_REVIEW.md` | controls verified, findings S-1…S-9, privacy review |
+| `docs/STATUS.md` | **generated** — branch/HEAD, last real test run, coverage, capability counts. Do not hand-edit |
+| `docs/REFERENCE_RUNS.md` | **generated** — the four reference runs: wall vs engine time, parameters, artefacts, memory |
 
 ## Repository hygiene
 
@@ -53,6 +55,13 @@ Models, generated media, virtualenvs, caches and credentials are deliberately no
 `*.onnx`, `*.gguf`, `*.pth`, `.env`, `studio/data/`, `users.json`. The LAN door's password
 store lives outside the repository at `~/.config/comfyui-caddy/users.json` (mode `0600`).
 
-Tests: `cd studio/backend && ../.venv/bin/python -m pytest -q` — 267 test functions in 17 files; the
-last recorded full run was 289 passed (8.7 s). The Phase 0 audit did not re-run the suite, so treat that
-number as a project record, not a fresh measurement — see `docs/PROJECT_AUDIT.md` §0.
+Tests: `cd studio && ./.venv/bin/python -m pytest backend/tests -q` — 297 executed (274 declared
+functions plus parametrisation), 0 failures, 70.3% statement coverage, 29 s, measured 2026-10-31 on
+this machine. Numbers are regenerated into `docs/STATUS.md` by
+`python3 studio/tools/gen_status.py`; `--check` fails when that file is stale, so the figures in the
+repository cannot silently drift again.
+
+Reference runs: `python3 studio/tools/reference_runs.py` drives the product's own `JobManager`
+sequentially and writes `docs/REFERENCE_RUNS.md` plus a JSON ledger. Measured 2026-10-31:
+txt2img 5.8 s, img2img (denoise 0.65) 4.8 s, WAN 2.2 t2v 1601.5 s, ACE-Step music 25.1 s —
+all completed, artefacts on disk.

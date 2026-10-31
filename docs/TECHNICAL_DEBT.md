@@ -36,6 +36,11 @@ Effort: **S** ≤ 1 day, **M** 2-3 days, **L** ≥ 1 week (one senior dev, this 
 ### TD-3 · No resource model — nothing knows whether a job fits
 * **Evidence**: queue decisions use depth + per-user caps only (`config.py:46-52`, `jobs.py`).
   `ComfyClient.free()` (`comfy.py:229`) has zero callers. `min_vram_gb` is a static authored number.
+* **Phase 1 measurement (2026-10-31)**: during the 1601.5 s WAN 2.2 render
+  `mem_info_vram_used` reached **90.3 GB** on a **30.5 GB** machine while `MemAvailable` never fell
+  below **19.15 GB**. So neither the static `min_vram_gb` nor the surfaced `vram_used` describes
+  residency: the estimator must be calibrated on `MemAvailable` deltas from the run ledger
+  (`docs/REFERENCE_RUNS.md`), and any gate built on `/system_stats` vram would never fire here.
 * **Why it hurts**: this is the single feature the brief calls "critical" (§10) and the one that makes
   WAN 2.2 (≈27 min, ~20 GB) co-exist with studio work safely. Without estimates, the only safe policy
   is strictly serial — which then wastes the 82 CPU-only host tools.
@@ -137,9 +142,13 @@ Effort: **S** ≤ 1 day, **M** 2-3 days, **L** ≥ 1 week (one senior dev, this 
   what is missing (engine, models, piper voice, whisper, onnx models) instead of failing at job time.
 * **Effort**: S. **Risk**: low.
 
-### TD-13 · Model catalog is hand-maintained, 19 entries for 23 files
-* **Evidence**: `registry/models_catalog.json` (19 records with sha256/url/licence) vs `DOC` 23 files /
-  50.54 GB on disk; `test_model_drift.py` (8) checks references, not bytes.
+### TD-13 · Model catalog is hand-maintained and does not match the disk
+* **Evidence** (verified in Phase 1): `registry/models_catalog.json` holds **19 records** with
+  sha256/url/licence, while `models/` contains **12 weight files, 44.92 GB** (10 `.safetensors` +
+  2 `.pth`). `docs/model_inventory.md` and `PROJECT_SUMMARY.md` claim 23 files / 50.54 GB — that
+  number counts non-weight files (configs, `.txt`, `.json`) and is wrong either way. No LoRA, no
+  ONNX model, and no GGUF is present on disk, so anything the UI advertises under those headings has
+  nothing behind it. `test_model_drift.py` (8) checks definition→catalog references, not bytes.
 * **Why it hurts**: the catalog is the only place licence and provenance live; drift makes it a
   suggestion rather than a source of truth.
 * **Task**: `tools/catalog_audit.py` — for every file on disk, is it catalogued? for every row, is it

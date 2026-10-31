@@ -22,16 +22,16 @@ project's own status docs and **not** re-measured here.
 
 | # | Feature | Status | Evidence in source | Test / proof |
 |---|---|---|---|---|
-| A1 | Unified Memory Monitor | PARTIALLY_IMPLEMENTED | `comfy.py:52-82 _gpu_summary` (vram_total/free, ram_total/free from `/system_stats`); surfaced as `vram_total_gb`/`vram_free_gb`/`ram_*`/`disk_free_gb` in `api.py:431-460` | snapshot only; no time series, no CPU pressure, no `/proc/meminfo` |
+| A1 | Unified Memory Monitor | PARTIALLY_IMPLEMENTED | `comfy.py:52-82 _gpu_summary` (vram_total/free, ram_total/free from `/system_stats`); surfaced as `vram_total_gb`/`vram_free_gb`/`ram_*`/`disk_free_gb` in `api.py:431-460` | snapshot only; no time series, no CPU pressure, no `/proc/meminfo`. **Phase 1 finding (audit §11 C-2): `/system_stats` reports a 96 GB VRAM ceiling on a 30.5 GB machine, so the currently surfaced number is not the real budget** |
 | A2 | Smart Memory Manager | NOT_IMPLEMENTED | `ComfyClient.free(unload_models, free_memory)` exists (`comfy.py:229`) with **zero callers** in `app/` (grep). Nothing ever unloads a model | — |
-| A3 | Hardware Benchmark Suite | NOT_IMPLEMENTED | `grep -ri benchmark studio/backend/app` → 0 hits; no route, no module | — |
+| A3 | Hardware Benchmark Suite | NOT_IMPLEMENTED | `grep -ri benchmark studio/backend/app` → 0 hits; no route, no module. Phase 1 added `studio/tools/reference_runs.py`, an offline harness — not a product feature | — |
 | A4 | Model Memory Estimator | NOT_IMPLEMENTED | `min_vram_gb` is a hand-authored per-definition constant (`schemas.py:132`, e.g. `txt2img-turbo.json:8` = 8) | no estimation code |
 | A5 | Adaptive Workflow Optimizer | PARTIALLY_IMPLEMENTED | preflight warnings only: `registry._warn_canvas_growth:314`, `_warn_thin_ace_tags:343`, hints in `description` | warns, never adapts parameters |
 | A6 | ROCm Diagnostics Center | PARTIALLY_IMPLEMENTED | `api.py:439-441` exposes comfy/torch version, device, backend; `studio/tools/audit_probe.py` probes a running engine | no rocm-smi/rocminfo collection, no report export |
 | A7 | Kernel / driver compatibility tracker | NOT_IMPLEMENTED | prose only: `docs/environment_audit.md`, `docs/compatibility_report.md` | — |
 | A8 | GPU performance profiles | NOT_IMPLEMENTED | — | — |
 | A9 | Thermal / power monitor | NOT_IMPLEMENTED | no sensor reads anywhere in `app/` | — |
-| A10 | Benchmark history | PARTIALLY_IMPLEMENTED | `jobs.duration_s` (`db.py:41`) recorded per job; `/api/jobs` exposes it | no resolution/steps/peak-memory columns, no comparison surface |
+| A10 | Benchmark history | PARTIALLY_IMPLEMENTED | `jobs.duration_s` (`db.py:41`) recorded per job; `/api/jobs` exposes it. **Phase 1:** `studio/tools/reference_runs.py` records wall + engine time + artefacts for the four reference workflows into a JSON ledger (`docs/REFERENCE_RUNS.md`) — an audit harness, not yet a product surface | no resolution/steps/peak-memory columns in `jobs`, no comparison route |
 
 ## B. Model intelligence
 
@@ -173,8 +173,8 @@ project's own status docs and **not** re-measured here.
 
 | # | Requirement | Status | Evidence |
 |---|---|---|---|
-| J1 | Unit tests exist | IMPLEMENTED | 267 `def test_*` across 17 files (`STATIC` count) |
-| J2 | Suite passes | NEEDS_VERIFICATION | **not run in this session** (command gate). Docs claim 200 / 289 — three different totals in three files |
+| J1 | Unit tests exist | IMPLEMENTED | 274 `def test_*` across 18 files (`STATIC` count 2026-10-31; 297 executed after parametrisation) |
+| J2 | Suite passes | IMPLEMENTED | **executed 2026-10-31**: 297 tests, 0 failures, 0 errors, 0 skipped, 29 s, coverage 70.3 % (`studio/cache/audit/junit.xml`, `coverage.json`); regenerated into `docs/STATUS.md` | — |
 | J3 | ComfyUI integration tests | PARTIALLY_IMPLEMENTED | `test_integration_comfy.py` (5 tests) skipped unless the engine is up |
 | J4 | End-to-end UI verification | PARTIALLY_IMPLEMENTED | `visual-app-audit` results quoted in `implementation_status.md:54`; no automated e2e in the repo |
 | J5 | Regressions on existing workflows | PARTIALLY_IMPLEMENTED | `test_stage5_workflows.py`, `test_stage_t_workflows.py` cover structure + some real host runs |
@@ -187,13 +187,14 @@ project's own status docs and **not** re-measured here.
 
 | Status | Count |
 |---|---:|
-| IMPLEMENTED | 33 |
+| IMPLEMENTED | 34 |
 | PARTIALLY_IMPLEMENTED | 26 |
 | NOT_IMPLEMENTED | 36 |
 | BROKEN | 0 |
-| NEEDS_VERIFICATION | 1 |
+| NEEDS_VERIFICATION | 0 |
 
-(96 classified rows; counted from this file, not estimated.)
+(96 classified rows; counted from this file, not estimated. J2 moved to IMPLEMENTED on 2026-10-31
+after the suite was actually executed: 297 passed, 70.3 % coverage — see `docs/STATUS.md`.)
 
 The shape matters more than the totals: everything that touches **execution** (queue, builder,
 registry, host tools, downloads, auth, isolation) is implemented and tested; everything named

@@ -4,7 +4,8 @@ Phase 0 deliverable. This roadmap is **derived from the audit**, not from the br
 Where they differ, the reason is stated: several items the brief schedules for Phase 1-2 already exist
 here, and several it assumes are trivial are the expensive part.
 
-Status of this document: **proposal, awaiting approval**. No architectural change starts before that.
+Status of this document: **approved** by the owner on 2026-10-31, with a re-ordered Phase 1
+(see §3). Implementation follows the owner's order, not this document's original one.
 
 ---
 
@@ -90,27 +91,31 @@ itself instead of a human copying numbers into Markdown.
 `music-ace-step`) and compare recorded durations with the DOC numbers — a real regression check that
 has never existed in code.
 
-## 3. Proposed sequence
+## 3. Approved sequence (owner decision, 2026-10-31)
 
-```
-Gate 0    Approve this audit.                                    (you)
-          ─────────────────────────────────────────────────────
-Step 1    Make the suite verifiable: run pytest, record the real   TD-1, TD-17, J2
-          count, add pytest-cov, publish docs/STATUS.md generated
-          by a script. No code change.
-Step 2    Docs truth pass (auth/bind/test totals).                 TD-1
-Step 3    Migrations + schema_version (before any new table).      TD-8
-Step 4    Improvement 1: type validation (warn) + revision hash.   TD-10, TD-7
-Step 5    Router extraction for jobs/models/workflows only.        TD-2 (partial)
-Step 6    Improvement 2a: two lanes.                               TD-4
-Step 7    Improvement 3: benchmark ledger + taxonomy + JSON logs.  A10, TD-16
-Step 8    Improvement 2b: estimator (advisory) → gate (opt-in).     TD-3
-Step 9    Upload hardening + quotas.                               TD-11
-```
+The owner approved this roadmap and re-ordered it: telemetry must land **before** the
+memory-aware scheduler (an estimator without measurements is guesswork), and the GPU/CPU queue
+split is its own priority because single-frame ffmpeg calls currently wait behind a 26-minute
+render. The LLM adapter is approved as a separate track (llama.cpp first, off by default).
 
-Step 1 comes first and is non-negotiable: **a refactor without a runnable suite is vandalism**. Step 3
-comes before Step 4 because both improvements add tables, and this is the last cheap moment to install
-a migration path.
+| # | Step | Status | Evidence |
+|---|---|---|---|
+| 1 | Make the suite verifiable: pytest + pytest-cov + generated `docs/STATUS.md`, plus the four reference runs | **done 2026-10-31** | 297 tests, 0 failures, 70.3% coverage, 29 s; `docs/STATUS.md`; `docs/REFERENCE_RUNS.md`; harnesses `studio/tools/gen_status.py`, `studio/tools/reference_runs.py` |
+| 2 | Graph type-check against `/object_info` (warn first) + workflow revision hash | next | TD-10, TD-7 |
+| 3 | Execution telemetry + benchmark ledger | pending | A10, TD-16 — the ledger already exists in embryo (`studio/cache/audit/refruns.db`, engine timings in the ledger) |
+| 4 | Separate lanes: GPU serial vs CPU host pool | pending | TD-4 — measured cost of not doing it: 26.7 min head-of-line block |
+| 5 | Model Memory Estimator + measured consumption statistics | pending | TD-3; must use `MemAvailable`, not `/system_stats` vram (PROJECT_AUDIT §11 C-2) |
+| 6 | Resource-aware scheduler on top of 3+5 | pending | TD-3 |
+| 7 | Migrations + `schema_version` before any new table | pending | TD-8 |
+| 8 | Docs truth pass (auth/bind/test totals) | partially done — the three Phase 0 documents are corrected; `PROJECT_SUMMARY.md` and `implementation_status.md` are not | TD-1 |
+| 9 | Upload hardening + quotas; router extraction for jobs/models/workflows | pending | TD-11, TD-2 |
+
+**LLM track (approved, parallel, never before step 6):** `LLMProvider` interface, llama.cpp adapter,
+disabled by default, lazy load/unload, configurable endpoint and model, hard timeouts, works with no
+LLM at all. It shares Unified Memory with ComfyUI, so it may not run concurrently with a heavy job
+until step 6 exists.
+
+Step 1 came first and was non-negotiable: **a refactor without a runnable suite is vandalism**.
 
 ## 4. Phases after the three improvements
 
