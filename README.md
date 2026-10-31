@@ -39,6 +39,12 @@ python3 deploy/caddy/verify_lan_access.py   # 18 checks: auth, proxy, WebSocket,
 | `docs/adr/0001-comfyui-lan-basic-auth.md` | why the door looks the way it does |
 | `docs/PROJECT_SUMMARY.md` | what the studio can do, with the hardware profile |
 | `docs/implementation_status.md` | status-tagged list of what is and is not finished, with evidence |
+| `docs/PROJECT_AUDIT.md` | **Phase 0 audit** — what exists, method, and what was *not* re-verified |
+| `docs/ARCHITECTURE.md` | how the pieces fit today, with the bottlenecks named |
+| `docs/FEATURE_MATRIX.md` | every proposed feature classified against real source files |
+| `docs/TECHNICAL_DEBT.md` | prioritised debt with evidence and effort |
+| `docs/ROADMAP.md` | proposed sequence — **awaiting approval** |
+| `docs/SECURITY_REVIEW.md` | controls verified, findings S-1…S-9, privacy review |
 
 ## Repository hygiene
 
@@ -47,4 +53,6 @@ Models, generated media, virtualenvs, caches and credentials are deliberately no
 `*.onnx`, `*.gguf`, `*.pth`, `.env`, `studio/data/`, `users.json`. The LAN door's password
 store lives outside the repository at `~/.config/comfyui-caddy/users.json` (mode `0600`).
 
-Tests: `cd studio/backend && ../.venv/bin/python -m pytest -q` → 289 passed.
+Tests: `cd studio/backend && ../.venv/bin/python -m pytest -q` — 267 test functions in 17 files; the
+last recorded full run was 289 passed (8.7 s). The Phase 0 audit did not re-run the suite, so treat that
+number as a project record, not a fresh measurement — see `docs/PROJECT_AUDIT.md` §0.
