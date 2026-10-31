@@ -1,15 +1,15 @@
 # STATUS — generated, do not hand-edit
 
-Regenerated: 2026-11-01 01:12 MSK by `python3 studio/tools/gen_status.py`.
+Regenerated: 2026-11-01 01:13 MSK by `python3 studio/tools/gen_status.py`.
 Every number below is computed from the working tree, from pytest artefacts, or from a
 live engine query. If a source is unavailable the row says so — nothing is filled in.
 
 ## Code
 
 | branch | `main` |
-| HEAD | `ed86d7bad8d9` — fix(status): stop counting STATUS.md itself as a dirty tree |
-| committed | 2026-11-01T01:12:15+03:00 |
-| working tree | clean |
+| HEAD | `fbf732e76ba0` — docs(telemetry): record the real migration path (v1 → 3) and the pre-v3 backup |
+| committed | 2026-11-01T01:13:03+03:00 |
+| working tree | dirty |
 
 ## Tests
 

@@ -344,7 +344,12 @@ def main() -> int:
             head = s.split("## Live host")[0]
             return "\n".join(ln for ln in head.splitlines()
                              if not ln.startswith("Regenerated:")
-                             and not ln.startswith("| working tree |"))
+                             and not ln.startswith("| working tree |")
+                             # HEAD moves with every commit, so a report is by definition
+                             # one line behind the tree it describes; comparing it made
+                             # --check fail immediately after each commit.
+                             and not ln.startswith("| HEAD |")
+                             and not ln.startswith("| committed |"))
 
         if stable(current) != stable(text):
             print("docs/STATUS.md is stale — run studio/tools/gen_status.py", file=sys.stderr)
