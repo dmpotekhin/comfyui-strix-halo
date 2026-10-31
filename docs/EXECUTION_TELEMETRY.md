@@ -232,14 +232,28 @@ run was not served from cache — `engine_ms` is 881 ms, and the 302 ms gap to `
 Studio's own submission overhead):
 
 ```
-job            workflow        type   timing_source  queue  exec   total  engine  mem before/peak/after
-569d08c6…      txt2img-turbo   graph  monotonic      3 ms   1183   1186   881     11252 / 11252 / 11251 MB
-21970d4d…      img-thumb-320   host   monotonic      1186   73     1259   NULL    11251 / 11277 / 11277 MB
+job        workflow        type   timing_source  queue  exec  total  engine  samples
+569d08c6…  txt2img-turbo   graph  monotonic      3 ms   1183  1186   881     6
+21970d4d…  img-thumb-320   host   monotonic      1186   73    1259   NULL    2
+
+job        mem used before/peak/after        min MemAvailable   container peak   studio RSS peak
+569d08c6…  11252.0 / 11252.0 / 11251.4 MB    19960.2 MB         18091.4 MB       58.9 MB
+21970d4d…  11251.4 / 11277.3 / 11277.3 MB    19934.9 MB         18091.4 MB       59.0 MB
+
+job        gpu busy avg/peak   temp max   power avg/peak   vram used peak   gtt peak   cpu avg/peak
+569d08c6…  34.5 % / 52.0 %     62 °C      33.6 / 43.8 W    10848.5 MB       115.4 MB   4.7 % / 7.0 %
+21970d4d…  41.5 % / 42.0 %     48 °C      38.9 / 39.1 W    10780.5 MB       115.4 MB   1.9 % / 3.8 %
 ```
 
-GPU during the graph run: busy avg 34.5 % / peak 52 %, 62 °C, 43.8 W peak, aperture `vram_used` peak
-10 848 MB (the number that must **not** be mistaken for a budget when `MemAvailable` is 19 960 MB).
 `metrics.unavailable` was empty for both rows — every signal on the list is readable on this host.
+
+The interesting negative result: **`MemAvailable` barely moved** during the graph run (19 960.2 →
+19 934.9 MB over the pair, i.e. the graph itself allocated almost nothing new). The model was already
+resident in the ComfyUI container (18 091 MB of the container's `memory.current`, largely reclaimable
+page cache already counted as available). That is exactly why the aperture figure (10 848 MB) and the
+container figure are stored next to the budget instead of replacing it: a run can look like it used
+10 GB of "VRAM" while the machine's real headroom never changed, and a scheduler that trusted the
+first number would refuse work the box can easily do.
 
 Two things this proved, which the unit tests could not:
 
