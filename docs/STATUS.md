@@ -1,14 +1,14 @@
 # STATUS — generated, do not hand-edit
 
-Regenerated: 2026-11-01 01:11 MSK by `python3 studio/tools/gen_status.py`.
+Regenerated: 2026-11-01 01:12 MSK by `python3 studio/tools/gen_status.py`.
 Every number below is computed from the working tree, from pytest artefacts, or from a
 live engine query. If a source is unavailable the row says so — nothing is filled in.
 
 ## Code
 
 | branch | `main` |
-| HEAD | `9e1053b7d5aa` — feat(telemetry): execution ledger, Strix Halo memory sampling, benchmark API |
-| committed | 2026-11-01T01:10:59+03:00 |
+| HEAD | `ed86d7bad8d9` — fix(status): stop counting STATUS.md itself as a dirty tree |
+| committed | 2026-11-01T01:12:15+03:00 |
 | working tree | clean |
 
 ## Tests
@@ -65,7 +65,7 @@ Model files on disk: **12** (44.92 GB); catalogued: **19** (see `docs/model_depe
 
 ComfyUI 0.15.0 · torch 2.9.1+rocm7.2.0.git7e1940d4 · cuda:0 AMD Radeon Graphics : native (cuda) · VRAM 88.7/96.0 GB free
 
-Unified memory (sysfs/proc, independent of the engine): vram used gb 8.77, gtt used gb 0.14, mem total gb 30.5, mem available gb 19.5
+Unified memory (sysfs/proc, independent of the engine): vram used gb 8.76, gtt used gb 0.14, mem total gb 30.5, mem available gb 19.6
 
 Disk free on the project volume: 709.9 GB of 936.8 GB.
 
