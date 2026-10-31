@@ -62,7 +62,10 @@ def git_facts() -> dict[str, str]:
         "rev": git("rev-parse", "HEAD")[:12] or "?",
         "subject": git("log", "-1", "--pretty=%s") or "?",
         "committed": git("log", "-1", "--pretty=%cI") or "?",
-        "dirty": "yes" if git("status", "--porcelain") else "no",
+        # STATUS.md is the file this tool writes: counting it as dirt made every freshly
+        # generated report claim a dirty tree, and made --check unable to ever pass.
+        "dirty": "yes" if git("status", "--porcelain", "--", ".",
+                              ":(exclude)docs/STATUS.md") else "no",
     }
 
 
