@@ -109,13 +109,52 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 INDEXES = """
 CREATE INDEX IF NOT EXISTS jobs_user_idx ON jobs(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS outputs_user_idx ON outputs(user_id, id DESC);
+CREATE INDEX IF NOT EXISTS telemetry_workflow_idx ON job_telemetry(workflow_id, completed_at DESC);
+CREATE INDEX IF NOT EXISTS telemetry_revision_idx ON job_telemetry(workflow_revision, completed_at DESC);
+CREATE INDEX IF NOT EXISTS telemetry_graph_idx ON job_telemetry(graph_revision);
+CREATE INDEX IF NOT EXISTS telemetry_error_idx ON job_telemetry(error_code);
+"""
+
+#: Execution telemetry ledger. One row per finished job, written by the worker after the job row is
+#: final, so a job that never started still gets a row with NULL timings. Kept in its own table
+#: rather than as columns on ``jobs``: the job row is the product's contract (and is serialised to
+#: the API on every poll), while the ledger is analytical data that grows with every run.
+TELEMETRY_TABLE = """
+CREATE TABLE IF NOT EXISTS job_telemetry (
+    job_id                   TEXT PRIMARY KEY,
+    workflow_id              TEXT NOT NULL DEFAULT '',
+    workflow_revision        TEXT,
+    graph_revision           TEXT,
+    execution_type           TEXT,
+    status                   TEXT NOT NULL DEFAULT '',
+    queued_at                TEXT,
+    started_at               TEXT,
+    completed_at             TEXT,
+    queue_wait_ms            INTEGER,
+    execution_ms             INTEGER,
+    total_ms                 INTEGER,
+    timing_source            TEXT,
+    engine_ms                INTEGER,
+    memory_before_mb         REAL,
+    memory_peak_mb           REAL,
+    memory_after_mb          REAL,
+    memory_peak_available_mb REAL,
+    memory_source            TEXT,
+    error_code               TEXT,
+    error_message            TEXT,
+    error_raw                TEXT,
+    metrics_json             TEXT,
+    created_at               TEXT NOT NULL,
+    FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+);
 """
 
 #: The schema version this build creates and expects.
 #:
 #: 1 — accounts: ``user_id`` on jobs, outputs, events.
 #: 2 — workflow revisions: ``workflow_revision`` / ``graph_revision`` on jobs.
-CURRENT_SCHEMA_VERSION = 2
+#: 3 — execution telemetry: the ``job_telemetry`` ledger.
+CURRENT_SCHEMA_VERSION = 3
 
 MIGRATIONS_TABLE = """
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -152,6 +191,7 @@ MIGRATIONS: tuple[tuple[int, str, tuple], ...] = (
         _add_column("jobs", "workflow_revision", "TEXT"),
         _add_column("jobs", "graph_revision", "TEXT"),
     )),
+    (3, "execution telemetry ledger", (TELEMETRY_TABLE,)),
 )
 
 
@@ -590,6 +630,89 @@ class Database:
             self._conn.commit()
         return cur.rowcount
 
+    # -- execution telemetry ledger ----------------------------------------------------
+    _TELEMETRY_COLUMNS = (
+        "job_id", "workflow_id", "workflow_revision", "graph_revision", "execution_type",
+        "status", "queued_at", "started_at", "completed_at", "queue_wait_ms", "execution_ms",
+        "total_ms", "timing_source", "engine_ms", "memory_before_mb", "memory_peak_mb", "memory_after_mb",
+        "memory_peak_available_mb", "memory_source", "error_code", "error_message", "error_raw",
+        "metrics_json", "created_at",
+    )
+
+    def record_telemetry(self, row: dict[str, Any]) -> None:
+        """Insert (or replace) the ledger row for one job.
+
+        Replace rather than insert-or-ignore: a job can be finished twice by design (a queued
+        cancellation is recorded where it happens, and the worker records again when it drains the
+        queue). Both writes derive from the final job row, so the last one wins and is still true.
+        """
+        payload = {key: row.get(key) for key in self._TELEMETRY_COLUMNS}
+        metrics = row.get("metrics")
+        payload["metrics_json"] = json.dumps(metrics, sort_keys=True) if metrics is not None else None
+        payload["created_at"] = payload["created_at"] or utcnow()
+        columns = ", ".join(self._TELEMETRY_COLUMNS)
+        marks = ", ".join("?" for _ in self._TELEMETRY_COLUMNS)
+        values = [payload[key] for key in self._TELEMETRY_COLUMNS]
+        with self._lock:
+            self._conn.execute(
+                f"INSERT OR REPLACE INTO job_telemetry ({columns}) VALUES ({marks})", values)
+            self._conn.commit()
+
+    def get_telemetry(self, job_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM job_telemetry WHERE job_id = ?", (job_id,)).fetchone()
+        return _telemetry_row(row) if row is not None else None
+
+    def list_telemetry(self, *, workflow_id: str | None = None, workflow_revision: str | None = None,
+                       graph_revision: str | None = None, status: str | None = None,
+                       error_code: str | None = None, user_id: str | None = None,
+                       since: str | None = None, limit: int = 200,
+                       offset: int = 0) -> list[dict[str, Any]]:
+        """Ledger rows, newest first, joined to ``jobs`` for the per-user scope.
+
+        ``user_id`` filters on the owning job: telemetry is analytical data, but *whose* run it was
+        is still a privacy decision and stays with the account that submitted it.
+        """
+        where: list[str] = []
+        args: list[Any] = []
+        if user_id is not None:
+            where.append("jobs.user_id = ?")
+            args.append(user_id)
+        for column, value in (("t.workflow_id", workflow_id),
+                              ("t.workflow_revision", workflow_revision),
+                              ("t.graph_revision", graph_revision),
+                              ("t.status", status),
+                              ("t.error_code", error_code)):
+            if value is not None:
+                where.append(f"{column} = ?")
+                args.append(value)
+        if since is not None:
+            where.append("COALESCE(t.completed_at, t.created_at) >= ?")
+            args.append(since)
+        clause = (" WHERE " + " AND ".join(where)) if where else ""
+        sql = ("SELECT t.*, jobs.user_id AS _user_id, jobs.params AS _params "
+               "FROM job_telemetry t LEFT JOIN jobs ON jobs.id = t.job_id"
+               f"{clause} ORDER BY COALESCE(t.completed_at, t.created_at) DESC LIMIT ? OFFSET ?")
+        args.extend([max(1, min(int(limit), 5000)), max(0, int(offset))])
+        with self._lock:
+            rows = self._conn.execute(sql, args).fetchall()
+        out = []
+        for row in rows:
+            item = _telemetry_row(row)
+            item["user_id"] = row["_user_id"] or ""
+            try:
+                item["params"] = json.loads(row["_params"]) if row["_params"] else {}
+            except (TypeError, ValueError):
+                item["params"] = {}
+            out.append(item)
+        return out
+
+    def count_telemetry(self) -> int:
+        with self._lock:
+            row = self._conn.execute("SELECT COUNT(*) AS n FROM job_telemetry").fetchone()
+        return int(row["n"])
+
 
 def _job_row(row: sqlite3.Row) -> dict[str, Any]:
     d = dict(row)
@@ -601,4 +724,15 @@ def _job_row(row: sqlite3.Row) -> dict[str, Any]:
                 d[key] = {} if key == "params" else []
     d.pop("graph", None)  # the graph is large; never returned to clients
     d.pop("client_id", None)
+    return d
+
+def _telemetry_row(row: sqlite3.Row) -> dict[str, Any]:
+    d = dict(row)
+    d.pop("_user_id", None)
+    d.pop("_params", None)
+    raw = d.pop("metrics_json", None)
+    try:
+        d["metrics"] = json.loads(raw) if raw else {}
+    except ValueError:
+        d["metrics"] = {}
     return d

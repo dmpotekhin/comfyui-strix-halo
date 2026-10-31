@@ -34,6 +34,7 @@ from .db import Database, utcnow
 from .graphcheck import CheckResult, blocks_submission, check_graph
 from .registry import ParamError, Registry
 from .revisions import graph_revision, revision_of, short as short_revision
+from .telemetry import ExecutionTelemetry, engine_ms_of
 from .schemas import JobOut, OutputRef
 
 log = logging.getLogger(__name__)
@@ -69,6 +70,7 @@ class JobManager:
         client_factory: Callable[[], ComfyClientProtocol],
         layout_output: Path,
         settings: Any,
+        telemetry: ExecutionTelemetry | None = None,
     ) -> None:
         self.db = db
         self.registry = registry
@@ -89,6 +91,22 @@ class JobManager:
         # Preflight results for jobs submitted by this process, so the API can return the
         # structured issues without rebuilding the graph (which would re-randomise seeds).
         self._checks: dict[str, CheckResult] = {}
+        # Engine-side timings (ComfyUI's own execution_start → success) for the job in flight.
+        self._engine_ms: dict[str, int] = {}
+        # Monotonic marks per job. The DB stores ISO timestamps at second resolution, which turns
+        # a 4-second turbo run into "0 ms"; the worker sees the real edges, so it keeps them here.
+        # A job the process never watched (orphan reconciliation) has no marks: its row falls back
+        # to the timestamps and says so in `timing_source`.
+        self._mono: dict[str, dict[str, float]] = {}
+        # Execution telemetry ledger. Optional: a manager built without it (tests, one-off tools)
+        # behaves exactly as before, it just does not write history.
+        self.telemetry = telemetry if telemetry is not None else ExecutionTelemetry(
+            db, execution_type_of=self.execution_type_of)
+        # A caller that injects its own telemetry usually has no access to this manager, so it
+        # cannot bind the resolver itself. Without it every row would claim a null
+        # execution_type, which is a lie the ledger should not tell.
+        if getattr(self.telemetry, "_execution_type_of", None) is None:
+            self.telemetry._execution_type_of = self.execution_type_of  # noqa: SLF001
 
     # -- lifecycle --------------------------------------------------------------------
     async def start(self) -> None:
@@ -148,6 +166,7 @@ class JobManager:
                       "flight. ComfyUI may have finished the graph; check the output folder.",
             )
             self.db.log_event(f"reconciled orphan job {job_id}", job_id=job_id, level="warn")
+            self._record_telemetry(job_id)      # the row exists; its memory numbers do not
         return len(ids) - adopted
 
     @property
@@ -238,6 +257,7 @@ class JobManager:
                 job_id=job_id, level="warn" if checks.has_errors else "info", user_id=user_id)
         self._progress[job_id] = 0.0
         self._stage[job_id] = "queued"
+        self._mono[job_id] = {"queued": time.monotonic()}
         await self._queue.put(job_id)
         self.db.log_event(f"queued {wf.id}", job_id=job_id, user_id=user_id)
         return job, True
@@ -269,6 +289,9 @@ class JobManager:
             self._cancelled.add(job_id)
             self.db.finish_job(job_id, "cancelled", error="Cancelled before start.")
             self.db.log_event("cancelled while queued", job_id=job_id, user_id=actor_id)
+            # Queued cancels never reach the worker's finally-block if the queue is discarded, so
+            # the history row is written here. The worker replaces it with the same content later.
+            self._record_telemetry(job_id)
             return self.db.get_job(job_id) or job
 
         # submitted / running -> ask ComfyUI to stop; never kill a process.
@@ -366,19 +389,86 @@ class JobManager:
     async def _worker_loop(self) -> None:
         while True:
             job_id = await self._queue.get()
+            observation = None
+            aborted = False
             try:
                 if job_id in self._cancelled:
                     self._cancelled.discard(job_id)
+                    # The job row is already final (cancel() finished it); it still belongs in the
+                    # history, with the metrics it actually has — queue wait yes, execution NULL.
                     continue
+                observation = self._begin_telemetry(job_id)
                 await self._run_job(job_id)
             except asyncio.CancelledError:
+                # Shutdown: the job is still in flight. Do not write a row that claims otherwise;
+                # reconcile_orphans() settles it (and records it) on the next start.
+                aborted = True
                 raise
             except Exception as e:  # noqa: BLE001 - a worker must never die
                 log.exception("job %s crashed the worker loop", job_id)
                 self.db.finish_job(job_id, "failed", error=f"internal error: {e}")
             finally:
                 self._running_job = None
+                if not aborted:
+                    self._record_telemetry(job_id, observation)
                 self._queue.task_done()
+
+    # -- telemetry --------------------------------------------------------------------
+    def execution_type_of(self, job: dict[str, Any]) -> str | None:
+        """``graph`` / ``host`` / ``chain`` from the definition; None when it is unknown."""
+        try:
+            wf = self.registry.defs.get(job.get("workflow_id") or "")
+        except Exception:            # noqa: BLE001 - unknown id is data, not an error
+            return None
+        if wf is None:
+            return None
+        return str(getattr(wf, "execution", "") or "graph")
+
+    def _begin_telemetry(self, job_id: str):
+        telemetry = getattr(self, "telemetry", None)
+        if telemetry is None:
+            return None
+        try:
+            return telemetry.begin(job_id)
+        except Exception:            # noqa: BLE001 - telemetry must never break a job
+            log.exception("telemetry sampler failed to start for %s", job_id)
+            return None
+
+    def _timings(self, job_id: str) -> dict[str, Any] | None:
+        """Wall-clock durations measured with the monotonic clock while the job was in hand.
+
+        Returns ``None`` when this process never saw the job, so the ledger can fall back to the
+        stored timestamps and label the row accordingly instead of pretending to sub-second truth.
+        """
+        marks = self._mono.pop(job_id, None) or {}
+        queued, started = marks.get("queued"), marks.get("started")
+        if queued is None:
+            return None
+        now = time.monotonic()
+        queue_wait = (started if started is not None else now) - queued
+        return {
+            "queue_wait_ms": max(0, int(round(queue_wait * 1000))),
+            "execution_ms": (max(0, int(round((now - started) * 1000)))
+                             if started is not None else None),
+            "total_ms": max(0, int(round((now - queued) * 1000))),
+            "source": "monotonic",
+        }
+
+    def _record_telemetry(self, job_id: str, observation=None) -> None:
+        """Write the ledger row. Runs after the job row is final, and never raises."""
+        telemetry = getattr(self, "telemetry", None)
+        if telemetry is None:
+            return
+        try:
+            checks = self._checks.get(job_id)
+            check_errors = [i.message for i in checks.errors] if checks is not None else None
+            summary = None
+            if observation is not None:
+                summary = observation.stop()
+            telemetry.record(job_id, summary=summary, engine_ms=self._engine_ms.pop(job_id, None),
+                             timings=self._timings(job_id), check_errors=check_errors)
+        except Exception:            # noqa: BLE001 - a lost row must not fail the run
+            log.exception("could not record telemetry for %s", job_id)
 
     async def _run_job(self, job_id: str) -> None:
         job = self.db.get_job(job_id)
@@ -392,6 +482,9 @@ class JobManager:
         self._running_job = job_id
         self.db.update_job(job_id, status="submitted", started_at=utcnow(), stage="submitting",
                            progress=0.05)
+        marks = self._mono.setdefault(job_id, {})
+        marks.setdefault("queued", time.monotonic())     # job found in the queue, not submitted here
+        marks["started"] = time.monotonic()
         self._stage[job_id] = "submitting"
         client_id = new_client_id()
 
@@ -457,6 +550,11 @@ class JobManager:
             if ws_task is not None:
                 ws_task.cancel()
                 self._ws_tasks.pop(job_id, None)
+
+        if isinstance(entry, dict):
+            engine = engine_ms_of(entry)
+            if engine is not None:
+                self._engine_ms[job_id] = engine
 
         if entry is TIMEOUT:
             budget = getattr(wf, "timeout_s", None) or self.settings.comfy_completion_timeout_s

@@ -33,6 +33,7 @@ import os
 import shutil
 import time
 from pathlib import Path
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote, unquote, urlsplit
 
@@ -41,7 +42,7 @@ from fastapi import (Body, Depends, FastAPI, File, Header, HTTPException, Query,
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__
+from . import __version__, benchmark, taxonomy
 from .auth import (CSRF_COOKIE, SAFE_METHODS, SESSION_COOKIE, AuthError, LoginThrottle,
                    Principal, authenticate, client_ip, create_user as create_account,
                    end_session, get_current_user, require_admin, set_password, start_session)
@@ -57,6 +58,19 @@ from .registry import ERROR_CATEGORIES, ParamError, Registry, iter_categories
 from .schemas import HealthOut, JobCreate, ModelFileOut, WorkflowDetail, WorkflowSummary
 
 log = logging.getLogger(__name__)
+
+
+def _iso_since(value: datetime | None) -> str | None:
+    """Normalise a caller's ``since`` into the UTC ISO-8601 form the ledger stores.
+
+    FastAPI parses the query parameter, so junk becomes a 422 instead of a silently empty history.
+    A naive timestamp is read as UTC because every row in the ledger is UTC.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat(timespec="seconds")
 GB = 1024**3
 
 
@@ -569,6 +583,139 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         if wf is None:
             raise HTTPException(404, f"unknown workflow: {workflow_id}")
         return state.registry.check(wf).as_dict()
+
+    # -- execution telemetry & benchmark ------------------------------------------------
+    def _telemetry(workflow_id: str | None = None, *, revision: str | None = None,
+                   graph_revision: str | None = None, status: str | None = None,
+                   error_code: str | None = None, since: datetime | None = None,
+                   limit: int = 200, offset: int = 0, user: Principal) -> list[dict[str, Any]]:
+        return state.db.list_telemetry(
+            workflow_id=workflow_id, workflow_revision=revision, graph_revision=graph_revision,
+            status=status, error_code=error_code, since=_iso_since(since), limit=limit,
+            offset=offset, user_id=_owner_scope(user))
+
+    @app.get("/api/telemetry/runs")
+    async def telemetry_runs(
+        workflow_id: str | None = None,
+        revision: str | None = None,
+        graph_revision: str | None = None,
+        status: str | None = None,
+        error_code: str | None = None,
+        since: datetime | None = None,
+        limit: int = Query(200, ge=1, le=2000),
+        offset: int = Query(0, ge=0),
+        user: Principal = Depends(get_current_user),
+    ) -> dict[str, Any]:
+        """Execution history, newest first. Non-admins see their own runs only."""
+        rows = _telemetry(workflow_id, revision=revision, graph_revision=graph_revision,
+                          status=status, error_code=error_code, since=since,
+                          limit=limit, offset=offset, user=user)
+        return {"runs": rows, "count": len(rows), "limit": limit, "offset": offset,
+                "scope": "all" if user.is_admin else "own"}
+
+    @app.get("/api/telemetry/stats")
+    async def telemetry_stats(workflow_id: str | None = None,
+                              since: datetime | None = None,
+                              user: Principal = Depends(get_current_user)) -> dict[str, Any]:
+        rows = _telemetry(workflow_id, since=since, limit=5000, user=user)
+        return {"workflow_id": workflow_id, "stats": benchmark.summarise(rows),
+                "by_workflow": benchmark.group_by(rows, "workflow_id"),
+                "by_execution_type": benchmark.group_by(rows, "execution_type")}
+
+    @app.get("/api/telemetry/memory")
+    async def telemetry_memory(workflow_id: str | None = None,
+                               limit: int = Query(500, ge=1, le=5000),
+                               user: Principal = Depends(get_current_user)) -> dict[str, Any]:
+        """Memory statistics, kept separated by source (system / process / gpu)."""
+        rows = _telemetry(workflow_id, limit=limit, user=user)
+        return {"workflow_id": workflow_id, "memory": benchmark.memory_report(rows)}
+
+    @app.get("/api/telemetry/errors")
+    async def telemetry_errors(workflow_id: str | None = None,
+                               since: datetime | None = None,
+                               limit: int = Query(1000, ge=1, le=5000),
+                               user: Principal = Depends(get_current_user)) -> dict[str, Any]:
+        rows = _telemetry(workflow_id, since=since, limit=limit, user=user)
+        return {"workflow_id": workflow_id, "errors": benchmark.error_report(rows),
+                "taxonomy": list(taxonomy.ERROR_CATEGORIES)}
+
+    @app.get("/api/telemetry/export")
+    async def telemetry_export(workflow_id: str | None = None,
+                               revision: str | None = None,
+                               graph_revision: str | None = None,
+                               format: str = Query("json", pattern="^(json|csv)$"),
+                               limit: int = Query(5000, ge=1, le=5000),
+                               user: Principal = Depends(get_current_user)) -> Response:
+        rows = _telemetry(workflow_id, revision=revision, graph_revision=graph_revision,
+                          limit=limit, user=user)
+        stamp = time.strftime("%Y%m%dT%H%M%S", time.gmtime())
+        if format == "csv":
+            body = benchmark.export_csv(rows)
+            media = "text/csv"
+            name = f"studio-telemetry-{stamp}.csv"
+        else:
+            body = benchmark.export_json(rows)
+            media = "application/json"
+            name = f"studio-telemetry-{stamp}.json"
+        return Response(content=body, media_type=media,
+                        headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+    @app.get("/api/workflows/{workflow_id}/stats")
+    async def workflow_stats(workflow_id: str, since: datetime | None = None,
+                             user: Principal = Depends(get_current_user)) -> dict[str, Any]:
+        rows = _telemetry(workflow_id, since=since, limit=5000, user=user)
+        wf = state.registry.defs.get(workflow_id)
+        return {
+            "workflow_id": workflow_id,
+            "execution_type": str(getattr(wf, "execution", "") or "graph") if wf else None,
+            "stats": benchmark.summarise(rows),
+            "by_revision": benchmark.group_by(rows, "workflow_revision"),
+            "by_graph_revision": benchmark.group_by(rows, "graph_revision"),
+            "memory": benchmark.memory_report(rows),
+            "errors": benchmark.error_report(rows),
+        }
+
+    @app.get("/api/workflows/{workflow_id}/benchmark")
+    async def workflow_benchmark(workflow_id: str,
+                                 by: str = Query("graph_revision",
+                                                 pattern="^(workflow_revision|graph_revision)$"),
+                                 revision: str | None = None,
+                                 limit: int = Query(1000, ge=1, le=5000),
+                                 user: Principal = Depends(get_current_user),
+                                 ) -> dict[str, Any]:
+        """Statistics for one workflow, grouped by revision.
+
+        ``revision`` narrows to one group; the response always says whether the runs inside it are
+        truly comparable (same cost-bearing parameters).
+        """
+        rows = _telemetry(workflow_id, limit=limit, user=user)
+        if revision:
+            rows = [r for r in rows if (r.get(by) or "unversioned") == revision]
+        groups = benchmark.benchmark_by_revision(rows, key=by)
+        return {"workflow_id": workflow_id, "by": by, "revision": revision,
+                "groups": groups,
+                "comparability": {
+                    "note": "each group is computed inside one revision; comparable=false means the "
+                            "runs in that group differ in cost-bearing parameters and must not be "
+                            "averaged together",
+                    "incomparable_groups": [g.get(by) for g in groups if not g["comparable"]],
+                }}
+
+    @app.get("/api/workflows/{workflow_id}/compare")
+    async def workflow_compare(workflow_id: str,
+                               base: str,
+                               target: str,
+                               by: str = Query("graph_revision",
+                                               pattern="^(workflow_revision|graph_revision)$"),
+                               user: Principal = Depends(get_current_user)) -> dict[str, Any]:
+        """Compare two revisions of one workflow. Refuses to pretend when they are not equals."""
+        rows = _telemetry(workflow_id, limit=5000, user=user)
+        left = [r for r in rows if (r.get(by) or "unversioned") == base]
+        right = [r for r in rows if (r.get(by) or "unversioned") == target]
+        if not left and not right:
+            raise HTTPException(404, f"no runs for either revision of {workflow_id}")
+        return {"workflow_id": workflow_id, "by": by,
+                "comparison": benchmark.compare(left, right, base=base, target=target)}
 
     # -- jobs -------------------------------------------------------------------------
     @app.post("/api/jobs")

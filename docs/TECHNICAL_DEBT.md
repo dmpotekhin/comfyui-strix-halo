@@ -23,8 +23,10 @@ Effort: **S** ≤ 1 day, **M** 2-3 days, **L** ≥ 1 week (one senior dev, this 
   edits numbers again.
 * **Effort**: S. **Risk**: none.
 
-### TD-2 · `api.py` is one 958-line function with 34 route closures
+### TD-2 · `api.py` is one 1 110-line function with 43 route closures
 * **Evidence**: `create_app()` at `api.py:82`; routes defined inline; all state reachable as closures.
+  Grew from 958 lines / 34 routes to 1 110 / 43 in Phase 1 (revisions + telemetry + benchmark), which is
+  exactly the trend this entry predicted.
 * **Why it hurts**: every new endpoint (scheduler, benchmarks, models, hardware) lands in the same
   scope, and every test needs the full app with all dependencies. Per-domain routers
   (`routers/workflows.py`, `routers/jobs.py`, …) with explicit dependencies are a prerequisite for
@@ -41,6 +43,10 @@ Effort: **S** ≤ 1 day, **M** 2-3 days, **L** ≥ 1 week (one senior dev, this 
   below **19.15 GB**. So neither the static `min_vram_gb` nor the surfaced `vram_used` describes
   residency: the estimator must be calibrated on `MemAvailable` deltas from the run ledger
   (`docs/REFERENCE_RUNS.md`), and any gate built on `/system_stats` vram would never fire here.
+* **Phase 1 step 3 (2026-11-01)**: the measurement half now exists — `job_telemetry` records
+  `MemAvailable`-derived used/peak/available for every run (`docs/EXECUTION_TELEMETRY.md`). What is
+  still missing is the *model*: nothing yet turns those rows into a prediction for a workflow that has
+  not run on this machine. The ledger is the training set, not the estimator.
 * **Why it hurts**: this is the single feature the brief calls "critical" (§10) and the one that makes
   WAN 2.2 (≈27 min, ~20 GB) co-exist with studio work safely. Without estimates, the only safe policy
   is strictly serial — which then wastes the 82 CPU-only host tools.
@@ -113,7 +119,9 @@ Effort: **S** ≤ 1 day, **M** 2-3 days, **L** ≥ 1 week (one senior dev, this 
   usable by the previous build. `tests/test_db_migrations.py` covers a pre-account schema, an
   account-but-no-revision schema, idempotent reopen, and a deliberately broken step. Verified against
   a copy of the production file: 130 jobs / 144 outputs / 3 users / 357 events unchanged, two columns
-  added (`docs/schema-migrations.md`).
+  added (`docs/schema-migrations.md`). Migration 3 (2026-11-01) added the `job_telemetry` ledger to that
+  same production copy without touching a single existing row — the framework's first two migrations
+  were both additive, so the first *non-additive* change is still untested.
 
 ### TD-9 · Frontend: one 810-line file, hand-rolled router, no component model
 * **Evidence**: `dist/assets/app.js` 810 lines, `api.js` 129, `index.html` 36; no build step, no
@@ -195,16 +203,46 @@ Effort: **S** ≤ 1 day, **M** 2-3 days, **L** ≥ 1 week (one senior dev, this 
   Documentation-level fix, zero runtime risk.
 * **Effort**: S. **Risk**: none.
 
+### TD-23 · The telemetry ledger has no retention policy
+* **Evidence**: `db.record_telemetry` inserts one row per terminal job; nothing prunes `job_telemetry`.
+* **Why it hurts**: harmless at today's volume (a few rows a day), but this table is meant to become a
+  scheduler/CostEstimator input, i.e. read on every submit. Unbounded growth turns a read that is now
+  microseconds into a join over years of history.
+* **Task**: a prune on `created_at` (keep N days, or keep every k-th run beyond a window) exposed as a
+  maintenance action; decide the window when the estimator is designed, not before.
+* **Effort**: S. **Risk**: low — but do not silently drop rows that a frozen benchmark references.
+
+### TD-24 · Peak memory is sampled, not traced
+* **Evidence**: `Sampler` polls at `interval_s` (0.5 s default) on a thread; `metrics.samples` records
+  how many points exist.
+* **Why it hurts**: a spike shorter than the interval is invisible, so two runs of the same graph can
+  report different peaks for reasons that have nothing to do with the graph. A future estimator
+  trained on these peaks inherits that noise.
+* **Task**: keep the sampler as the default (cheap) but let the interval be tuned per execution type;
+  when an estimator exists, weight rows by `samples` and `interval_s` instead of trusting peaks equally.
+* **Effort**: S. **Risk**: none.
+
+### TD-25 · `engine_ms` is meaningless for cached prompts
+* **Evidence**: ComfyUI reports `execution_start → execution_success`; a prompt it has already run
+  returns immediately with a near-zero duration.
+* **Why it hurts**: a benchmark that groups by graph revision will happily average a cached 0 ms run
+  with a 900 ms real one, producing a duration nobody can reproduce.
+* **Task**: record whether the run was served from cache (ComfyUI's history carries no such flag — a
+  `POST /history` diff or a cache-busting seed policy is needed); until then, document it and never
+  average `engine_ms` without checking `execution_ms`.
+* **Effort**: M. **Risk**: low (investigation only).
+
 ## P3 — hygiene
 
 | # | Item | Evidence | Note |
 |---|---|---|---|
 | TD-16 | Plain-text logs, no correlation id beyond `job_id` | `main.py:38-41` | JSON formatter behind an env flag is enough |
-| TD-17 | No coverage measurement, no CI | no `pytest-cov`, no CI config | 267 tests exist; nobody knows what they cover |
+| TD-17 | ~~No coverage measurement~~ (CI still absent) | `pytest-cov==7.1.0`, artefacts in `studio/cache/audit/` | **Resolved 2026-11-01**: 75.1 % (3665/4881) rendered into `docs/STATUS.md`. CI: still TD-7/J7 |
 | TD-18 | `test_integration_comfy.py` skipped unless engine is up | 5 tests | Fine — but then "integration verified" must always be stated as conditional |
 | TD-19 | Engine error text parsed by string matching | `comfy._extract_error`, `jobs._extract_error` | Works today; breaks on ComfyUI message changes |
 | TD-20 | `cookie_secure: bool = False` | `config.py:37` | Correct for HTTP LAN, wrong the day TLS lands (Phase C plan) |
 | TD-21 | Inpaint requires an external mask; CFG locked at 1.0 | `implementation_status.md` #1, #2 | Product gap, documented, not debt — do not "fix" without a UI plan |
+| TD-26 | CSV export does not neutralise spreadsheet formulas | `benchmark.export_csv` (`csv.DictWriter`) | A message starting with `=`/`+`/`-`/`@` is quoted but still evaluated by Excel. Prefix with `'` when the cell starts with one of those |
 | TD-22 | Two parallel "stage" doc sets (`stage_r`, `stage_s`, `stage_t`, `net1`) | `docs/` 26 files | Historical value; archive older stages under `docs/archive/` at Phase 1 start |
 
 ---
@@ -215,7 +253,7 @@ Effort: **S** ≤ 1 day, **M** 2-3 days, **L** ≥ 1 week (one senior dev, this 
 |---|---|
 | 1 (foundation) | TD-1, TD-8, TD-2 (partial: jobs/models routers), TD-11 |
 | 2 (workflow intelligence) | ~~TD-10~~, ~~TD-7~~, TD-6 (only if an LLM layer is approved) — the first two shipped 2026-11-01 |
-| 3 (model/hardware intelligence) | TD-3, TD-4, TD-5, TD-13 |
+| 3 (model/hardware intelligence) | TD-3 (measurement shipped in step 3; the estimator itself is TD-3), TD-4, TD-5, TD-13, TD-23, TD-24 |
 | 4 (knowledge/learning) | TD-7 (history identity) |
 | 5 (studio) | TD-9, TD-15 |
 | 6 (automation) | TD-6, TD-4, TD-16 |

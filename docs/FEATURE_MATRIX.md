@@ -22,16 +22,16 @@ project's own status docs and **not** re-measured here.
 
 | # | Feature | Status | Evidence in source | Test / proof |
 |---|---|---|---|---|
-| A1 | Unified Memory Monitor | PARTIALLY_IMPLEMENTED | `comfy.py:52-82 _gpu_summary` (vram_total/free, ram_total/free from `/system_stats`); surfaced as `vram_total_gb`/`vram_free_gb`/`ram_*`/`disk_free_gb` in `api.py:431-460` | snapshot only; no time series, no CPU pressure, no `/proc/meminfo`. **Phase 1 finding (audit §11 C-2): `/system_stats` reports a 96 GB VRAM ceiling on a 30.5 GB machine, so the currently surfaced number is not the real budget** |
+| A1 | Unified Memory Monitor | PARTIALLY_IMPLEMENTED | snapshot in `comfy.py:52-82 _gpu_summary` (`/system_stats`, whose 96 GB VRAM ceiling is **not** a budget on a 30.5 GB machine). **Phase 1 step 3:** `app/telemetry.py` samples `/proc/meminfo`, process RSS + ComfyUI cgroup, sysfs GPU/GTT/busy/temp/power and `/proc/stat`, and stores the summary per job in `job_telemetry.metrics_json` | `test_telemetry.py`; live run 2026-11-01 (`docs/EXECUTION_TELEMETRY.md` §7) — no live/time-series *UI*, which is why this stays partial |
 | A2 | Smart Memory Manager | NOT_IMPLEMENTED | `ComfyClient.free(unload_models, free_memory)` exists (`comfy.py:229`) with **zero callers** in `app/` (grep). Nothing ever unloads a model | — |
-| A3 | Hardware Benchmark Suite | NOT_IMPLEMENTED | `grep -ri benchmark studio/backend/app` → 0 hits; no route, no module. Phase 1 added `studio/tools/reference_runs.py`, an offline harness — not a product feature | — |
+| A3 | Hardware Benchmark Suite | NOT_IMPLEMENTED | no synthetic hardware tests (FLOPS, memory bandwidth). Phase 1 added `studio/tools/reference_runs.py` and, in step 3, the `job_telemetry` ledger — the measurement substrate a suite would report into | — |
 | A4 | Model Memory Estimator | NOT_IMPLEMENTED | `min_vram_gb` is a hand-authored per-definition constant (`schemas.py:132`, e.g. `txt2img-turbo.json:8` = 8) | no estimation code |
 | A5 | Adaptive Workflow Optimizer | PARTIALLY_IMPLEMENTED | preflight warnings only: `registry._warn_canvas_growth:314`, `_warn_thin_ace_tags:343`, hints in `description` | warns, never adapts parameters |
 | A6 | ROCm Diagnostics Center | PARTIALLY_IMPLEMENTED | `api.py:439-441` exposes comfy/torch version, device, backend; `studio/tools/audit_probe.py` probes a running engine | no rocm-smi/rocminfo collection, no report export |
 | A7 | Kernel / driver compatibility tracker | NOT_IMPLEMENTED | prose only: `docs/environment_audit.md`, `docs/compatibility_report.md` | — |
 | A8 | GPU performance profiles | NOT_IMPLEMENTED | — | — |
-| A9 | Thermal / power monitor | NOT_IMPLEMENTED | no sensor reads anywhere in `app/` | — |
-| A10 | Benchmark history | PARTIALLY_IMPLEMENTED | `jobs.duration_s` (`db.py:41`) recorded per job; `/api/jobs` exposes it. **Phase 1:** `studio/tools/reference_runs.py` records wall + engine time + artefacts for the four reference workflows into a JSON ledger (`docs/REFERENCE_RUNS.md`) — an audit harness, not yet a product surface | no resolution/steps/peak-memory columns in `jobs`, no comparison route |
+| A9 | Thermal / power monitor | PARTIALLY_IMPLEMENTED | `telemetry.HostProbe` reads `hwmon*/temp1_input` and `power1_average` plus `gpu_busy_percent`, aggregated per run into `metrics.gpu` | `test_telemetry.py` (fixture tree); live: 62 °C / 43.8 W peak on a real turbo run — collected, not yet surfaced as a live gauge |
+| A10 | Benchmark history | IMPLEMENTED | `job_telemetry` ledger (schema v3) records every run with revisions, durations, memory and error code; `/api/telemetry/runs|stats|memory|errors|export` (JSON/CSV), `/api/workflows/{id}/stats|benchmark|compare` | `test_telemetry_jobs.py` (8, real JobManager), `test_telemetry_api.py` (17), `test_benchmark.py` (21), `test_db_migrations.py`; live rows in `docs/EXECUTION_TELEMETRY.md` §7 |
 
 ## B. Model intelligence
 
@@ -59,7 +59,7 @@ project's own status docs and **not** re-measured here.
 | C5 | Workflow explainer | PARTIALLY_IMPLEMENTED | per-definition `description`, `notes`, per-param `description`; readiness `detail` strings | no graph-level explanation (data flow, per-node purpose) |
 | C6 | Workflow repair agent | NOT_IMPLEMENTED | `POST /api/jobs/{id}/rerun` (`api.py:624`) only re-submits; `jobs._extract_error:705` extracts node errors, nothing acts on them | — |
 | C7 | Workflow version control | PARTIALLY_IMPLEMENTED | JSON definitions are in git; **`app/revisions.py`** stores `workflow_revision` + `graph_revision` (SHA-256 of canonical JSON) on every job, NULL for legacy rows; rules in `docs/WORKFLOW_REVISIONS.md`; schema v2 via `schema_migrations` | identity only: no `workflow_versions` body store, no rollback, no diff view, no pinning by revision |
-| C8 | Workflow benchmark database | NOT_IMPLEMENTED | see A10 | — |
+| C8 | Workflow benchmark database | IMPLEMENTED | `app/benchmark.py` over `job_telemetry`: grouping by `workflow_revision` and `graph_revision`, median/P50/P95, success rate, memory report, error distribution, JSON/CSV export; `comparable: false` (no deltas) when cost-bearing params differ | `test_benchmark.py` (21), `test_telemetry_api.py` |
 
 ## D. AI knowledge base and learner
 
@@ -134,7 +134,7 @@ project's own status docs and **not** re-measured here.
 
 | # | Feature | Status | Evidence |
 |---|---|---|---|
-| G1 | REST API | IMPLEMENTED | 34 routes, `/api/docs` + `/api/openapi.json` (FastAPI); `docs/` has no hand-written API contract |
+| G1 | REST API | IMPLEMENTED | 43 routes, `/api/docs` + `/api/openapi.json` (FastAPI); telemetry/benchmark routes added in step 3 | `/api/docs` |
 | G2 | Python SDK | NOT_IMPLEMENTED | `studio/tools/smoke_run.py` is an internal script against the HTTP API; not a packaged client |
 | G3 | Scheduled generation | NOT_IMPLEMENTED | `grep -ri "schedule\|cron" studio/backend/app` → 0 hits |
 | G4 | Multi-instance manager | NOT_IMPLEMENTED | one `ComfyClient`, one container; spawning a second engine is explicitly forbidden (`jobs.py:8-9`) |
@@ -146,9 +146,9 @@ project's own status docs and **not** re-measured here.
 |---|---|---|---|
 | H1 | App + engine health | IMPLEMENTED | `/api/health` (`api.py:431`) |
 | H2 | Queue state / active workflows | IMPLEMENTED | `/api/stats` + `/api/jobs` + ComfyUI `/queue` |
-| H3 | Execution history | IMPLEMENTED | `jobs` + `outputs` tables |
+| H3 | Execution history | IMPLEMENTED | `jobs` + `outputs` tables, plus the `job_telemetry` ledger (durations, memory, error code) exposed at `/api/telemetry/runs` | `test_telemetry_api.py` |
 | H4 | Event log with levels | IMPLEMENTED | `events` table, `/api/events`, ownership-scoped |
-| H5 | Error classification | PARTIALLY_IMPLEMENTED | `registry.ERROR_CATEGORIES:41` for parameter errors; `jobs._extract_error:705` pulls node error text; no taxonomy for engine/host/OS failures |
+| H5 | Error classification | IMPLEMENTED | `app/taxonomy.py` — 10 categories (`VALIDATION_ERROR` … `UNKNOWN`) over engine/host/OS failure text, original message kept in `error_raw`; distribution at `/api/telemetry/errors` | `test_taxonomy.py` (25), `test_telemetry_jobs.py` |
 | H6 | Structured logs | NOT_IMPLEMENTED | `logging.basicConfig` plain text (`main.py:38-41`) |
 | H7 | Metrics / time series | NOT_IMPLEMENTED | no Prometheus, no `/metrics` |
 | H8 | Diagnostic report | PARTIALLY_IMPLEMENTED | `deploy/caddy/verify_lan_access.py` (18 checks) covers the LAN door only |
@@ -173,12 +173,12 @@ project's own status docs and **not** re-measured here.
 
 | # | Requirement | Status | Evidence |
 |---|---|---|---|
-| J1 | Unit tests exist | IMPLEMENTED | 328 `def test_*` across 23 files (`STATIC` count 2026-11-01; 371 executed after parametrisation) |
-| J2 | Suite passes | IMPLEMENTED | **executed 2026-11-01**: 371 tests, 0 failures, 0 errors, 0 skipped, 29.5 s, coverage 72.1 % (`studio/cache/audit/junit.xml`, `coverage.json`); regenerated into `docs/STATUS.md` | — |
+| J1 | Unit tests exist | IMPLEMENTED | 405 `def test_*` across 26 files (`STATIC` count 2026-11-01; 472 executed after parametrisation) | — |
+| J2 | Suite passes | IMPLEMENTED | **executed 2026-11-01 after step 3**: 474 tests, 0 failures, 0 errors, 36.8 s, coverage 75.2 % (`studio/cache/audit/junit.xml`, `coverage.json`); rendered into `docs/STATUS.md` | — |
 | J3 | ComfyUI integration tests | PARTIALLY_IMPLEMENTED | `test_integration_comfy.py` (5 tests) skipped unless the engine is up |
 | J4 | End-to-end UI verification | PARTIALLY_IMPLEMENTED | `visual-app-audit` results quoted in `implementation_status.md:54`; no automated e2e in the repo |
 | J5 | Regressions on existing workflows | PARTIALLY_IMPLEMENTED | `test_stage5_workflows.py`, `test_stage_t_workflows.py` cover structure + some real host runs |
-| J6 | Coverage measurement | IMPLEMENTED | `pytest-cov==7.1.0` in `studio/requirements.txt`; every full run writes `cache/audit/coverage.json` + `junit.xml`; 72.1 % (3055/4238) rendered into `docs/STATUS.md` |
+| J6 | Coverage measurement | IMPLEMENTED | `pytest-cov==7.1.0`; every full run writes `cache/audit/coverage.json` + `junit.xml`; 75.2 % (3674/4888) rendered into `docs/STATUS.md` | — |
 | J7 | CI | NOT_IMPLEMENTED | no workflow config in the tree |
 
 ---
@@ -187,16 +187,18 @@ project's own status docs and **not** re-measured here.
 
 | Status | Count |
 |---|---:|
-| IMPLEMENTED | 36 |
-| PARTIALLY_IMPLEMENTED | 25 |
-| NOT_IMPLEMENTED | 35 |
+| IMPLEMENTED | 39 |
+| PARTIALLY_IMPLEMENTED | 24 |
+| NOT_IMPLEMENTED | 33 |
 | BROKEN | 0 |
 | NEEDS_VERIFICATION | 0 |
 
 (96 classified rows; counted from this file, not estimated. J2 moved to IMPLEMENTED on 2026-10-31
 after the suite was actually executed; C4 moved to IMPLEMENTED on 2026-11-01 after the validator was
-written and run over all 127 shipped definitions. Current run: 371 passed, 72.1 % coverage — see
-`docs/STATUS.md`.)
+written and run over all 127 shipped definitions. Phase 1 step 3 (2026-11-01) moved A10, C8 and H5 to
+IMPLEMENTED and A9 to PARTIALLY_IMPLEMENTED: the `job_telemetry` ledger, the benchmark module and the
+error taxonomy now exist and were exercised on real runs. Current run: 474 passed, 75.2 % coverage —
+see `docs/STATUS.md`.)
 
 The shape matters more than the totals: everything that touches **execution** (queue, builder,
 registry, host tools, downloads, auth, isolation) is implemented and tested; everything named

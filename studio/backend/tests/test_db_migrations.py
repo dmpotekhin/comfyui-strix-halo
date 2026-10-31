@@ -168,3 +168,59 @@ def test_failed_migration_rolls_back(tmp_path, monkeypatch):
     assert "no_such_thing" not in cols          # the failed batch did not half-apply
     assert still_there is not None
     assert user_version != CURRENT_SCHEMA_VERSION + 1
+
+
+# ---------------------------------------------------------------- v3: telemetry ledger
+
+def _tables(path):
+    conn = sqlite3.connect(str(path))
+    try:
+        return {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    finally:
+        conn.close()
+
+
+def test_migration_3_creates_the_ledger_for_an_old_database(tmp_path):
+    path = _legacy(tmp_path)
+    db = Database(path)
+    assert "job_telemetry" in _tables(path)
+    assert db.get_telemetry("old-1") is None        # old jobs simply have no ledger row
+    assert db.count_telemetry() == 0
+    db.close()
+
+
+def test_ledger_survives_reopen_and_replaces_its_own_row(tmp_path):
+    path = tmp_path / "studio.db"
+    db = Database(path)
+    db.create_job(job_id="j1", workflow_id="w", workflow_name="W", params={}, graph=None,
+                  client_id="c", client_token=None, status="completed")
+    db.record_telemetry({"job_id": "j1", "workflow_id": "w", "status": "completed",
+                         "queue_wait_ms": 10, "metrics": {"samples": 3}})
+    db.record_telemetry({"job_id": "j1", "workflow_id": "w", "status": "completed",
+                         "queue_wait_ms": 12, "metrics": {"samples": 4}})
+    assert db.count_telemetry() == 1
+    row = db.get_telemetry("j1")
+    assert row["queue_wait_ms"] == 12 and row["metrics"]["samples"] == 4
+    db.close()
+
+    db2 = Database(path)                            # reopening keeps the ledger
+    assert db2.get_telemetry("j1")["queue_wait_ms"] == 12
+    db2.close()
+
+
+def test_ledger_rows_are_filterable_and_scoped_by_owner(tmp_path):
+    db = Database(tmp_path / "studio.db")
+    for job_id, user, stamp in (("a", "dmitry", "2026-11-01T10:00:01+00:00"),
+                                ("b", "wife", "2026-11-01T10:00:02+00:00")):
+        db.create_job(job_id=job_id, workflow_id="txt2img-turbo", workflow_name="T", params={},
+                      graph=None, client_id="c", client_token=None, status="completed",
+                      user_id=user)
+        db.record_telemetry({"job_id": job_id, "workflow_id": "txt2img-turbo",
+                             "status": "completed", "workflow_revision": "rev-1",
+                             "completed_at": stamp})
+    assert len(db.list_telemetry()) == 2
+    assert len(db.list_telemetry(user_id="dmitry")) == 1
+    assert len(db.list_telemetry(workflow_revision="rev-1")) == 2
+    assert db.list_telemetry(status="failed") == []
+    assert db.list_telemetry()[0]["job_id"] == "b"      # newest first
+    db.close()

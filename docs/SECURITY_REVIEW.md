@@ -180,3 +180,29 @@ more than it would for a cloud app: the LAN is the only weak link in the chain.
 None of these is a HIGH: nothing in this review allows an unauthenticated network attacker to read
 another user's media or execute code **without** first getting a malicious weight or media file onto
 the box.
+
+---
+
+## 5. Addendum — Phase 1 step 3 (execution telemetry & benchmark API)
+
+Scope: the ten new routes in `app/api.py` (telemetry/benchmark), the new tables
+(`job_telemetry`), and the new collection paths in `app/telemetry.py`. Method: source read plus
+running the new suite. No dynamic scanner; findings are code-review findings.
+
+| Control | Where | Result |
+|---|---|---|
+| Every new route requires a session | `Depends(get_current_user)` on all 10 | **Met** — `test_telemetry_api.py::test_history_requires_a_session` asserts 401/403 without one |
+| Non-admins see only their own runs | `_telemetry(...)` → `_owner_scope(user)` → `list_telemetry(user_id=…)` joined to `jobs.user_id` | **Met** — `test_telemetry_api.py::test_scoped_user_sees_only_own_runs` |
+| No SQL injection through filters | `list_telemetry` builds `WHERE` from a fixed column list with `?` placeholders; `LIMIT`/`OFFSET` coerced through `max(min(int(...)))` | **Met** — no f-string carries a caller value |
+| Bad input fails loudly | `since` is a parsed `datetime` (junk → 422), `format` is regex-constrained, `by` is regex-constrained, every `limit` has `ge/le` bounds | **Met** — added during this review: an unvalidated `since` used to return an empty page, which reads as "no runs" instead of "bad query" |
+| No secrets in stored metrics | `telemetry.py` reads `/proc`, cgroup and sysfs; the only environment reads are container/scope *names* | **Met** — no env dumps, no tokens, no paths beyond the host's own |
+| No cross-account leakage through error text | `error_raw` may contain host paths or model filenames; it is returned only with the owning job, and admins already see the filesystem | **Accepted risk**, documented |
+| Bounded response size | `metrics_json` holds one summary per run; every list endpoint is capped (2000/5000) | **Met** |
+| Export cannot be steered to another path | filename is generated from `time.strftime`; `Content-Disposition` carries no caller string | **Met** |
+
+One residual, newly recorded as debt: `export_csv` uses `csv.DictWriter`, which quotes correctly but
+does not neutralise spreadsheet formula prefixes (`=`, `+`, `-`, `@`) at the start of an error message
+(TD-26). Impact is limited to a family LAN and an operator who opens the CSV in Excel.
+
+No HIGH or MEDIUM finding. Nothing here lets an unauthenticated LAN device read another account's runs,
+and no telemetry field can be used to write outside the database.
