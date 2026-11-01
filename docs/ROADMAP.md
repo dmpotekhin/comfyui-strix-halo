@@ -159,10 +159,13 @@ only egress in a local-first product.
 
 ### Phase 4.5 — Multi-user (in progress)
 Shipped: three roles (`admin`/`user`/`child`), a data-driven workflow/model policy enforced server-side,
-per-role concurrent-job caps, capabilities in `/api/auth/me` (`docs/RBAC.md`).
+per-role concurrent-job caps, per-role daily run allowance and disk allowance (checked at submission),
+a job may only read the caller's own uploads, `/api/me/usage` with the caps that apply, a dashboard
+"Your allowance" card that prints those numbers and computes none of them, and device sessions
+(`GET /api/auth/sessions`, sign out other devices) (`docs/RBAC.md`).
 Still missing, in the order that pays off first: projects as a real entity (a child's work needs a
-container that is not a flat job list) → shared history with explicit publish → disk/generation quotas →
-per-model ACLs → denial audit log.
+container that is not a flat job list) → shared history with explicit publish → per-model ACLs →
+denial audit log for 403s (budget refusals are already logged).
 
 ### Phase 5 — Production studio
 Order: separate Studio surfaces (TD-9, TD-15) → character consistency manager (the

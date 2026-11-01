@@ -82,11 +82,34 @@ denied rather than accidentally trusted.
 | `/api/models`, `/api/models/catalog` | everything | everything | only the folders in the policy |
 | `/api/uploads` | ✓ | ✓ | per `allow_upload` |
 | `/api/me/usage` | own totals | own totals | own totals (counts, bytes, active jobs, the cap that applies) |
+| `/api/auth/sessions`, `POST /api/auth/sessions/revoke-others` | own sessions | own sessions | own sessions |
 | `/api/users/usage` | every account | 403 | 403 |
 | `/api/models/plan`, `/api/models/downloads`, `/api/models/{f}/delete`, `/api/settings` (write), `/api/users*`, `/api/engine/refresh` | ✓ | 403 | 403 |
 
 `GET /api/settings` is admin-only (it exposes engine and paths). `/api/auth/me` returns
 `capabilities` for the current account; the SPA uses it for navigation and upload fields.
+
+### Sessions
+
+`GET /api/auth/sessions` lists where the account is signed in — `created_at`, `last_seen`,
+`expires_at`, `client_ip`, `user_agent`, and which one is the caller. The row id *is*
+`sha256(cookie)`, i.e. the bearer key, so it never leaves `db.list_sessions()`; the route has no
+field to leak it into.
+
+`POST /api/auth/sessions/revoke-others` deletes every session of the caller except the one making
+the request, so "sign out other devices" cannot sign you out too. Two devices pressing it at the
+same moment would otherwise delete each other and empty the account — the statement carries an
+`EXISTS` guard, so the first request wins and the loser gets `401 session was signed out by
+another device` instead of a false `200`.
+
+### A job may only read the caller's own uploads
+
+`/api/outputs` refuses to *serve* another account's file, but a workflow with an image parameter
+is a second door: the job loads the file server-side and the rendered result lands in the
+caller's own outputs. So submission checks every `image` parameter with the same
+`_media_allowed("input", …)` rule (own `<user_id>_*` names for everyone but admin; refusal is
+`403 image '…' is not one of your uploads` plus a `warn` event), and the workflow picker is
+filtered with it too. Admins are not restricted.
 
 ## Adding a role or moving the line
 
@@ -110,6 +133,11 @@ Honest list, so nobody mistakes this for a finished permission system:
    storage allowance can both finish over it, and the storage check uses the recorded output
    sizes (files written outside the outputs table are not counted).
 5. **Audit trail of denials** covers the three submission refusals (active cap, daily
-   allowance, storage allowance) as `warn` events with the `user_id`; a 403 on a forbidden
-   workflow or a blocked upload is *not* logged yet.
-6. **The SPA is not the boundary** and never will be — treat `dist/assets/*.js` as UI only.
+   allowance, storage allowance) and a job referencing somebody else's upload, as `warn` events
+   with the `user_id`; a 403 on a forbidden workflow or a blocked upload route is *not* logged yet.
+6. **`benchmark`/`compare` accept any workflow id** (`/api/workflows/{id}/benchmark`,
+   `/compare`). They aggregate only the caller's own telemetry, so a child gets empty groups for a
+   workflow they may not run — no data leak, but the gate is inconsistent with `/{id}` (which
+   answers 403). Left as is on purpose: adding `_workflow_for` there would change 404/403 semantics
+   for a route that leaks nothing.
+7. **The SPA is not the boundary** and never will be — treat `dist/assets/*.js` as UI only.
