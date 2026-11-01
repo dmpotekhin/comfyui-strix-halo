@@ -678,6 +678,44 @@ class Database:
             self._conn.commit()
         return cur.rowcount
 
+    def list_sessions(self, user_id: str, *, current_id: str | None = None) -> list[dict[str, Any]]:
+        """The account's live sessions, for the "which devices am I signed in on?" screen.
+
+        The session id *is* the bearer token, so it never leaves this method: the caller gets
+        metadata and a ``current`` flag, not something it could replay.
+        """
+        with self._lock:
+            # Expired rows can linger until purge_sessions() runs; a device list must not show
+            # sign-ins that no longer work.
+            rows = self._conn.execute(
+                "SELECT id, created_at, last_seen, expires_at, client_ip, user_agent"
+                " FROM sessions WHERE user_id=? AND expires_at > ?"
+                " ORDER BY last_seen DESC", (user_id, utcnow())).fetchall()
+        out = []
+        for r in rows:
+            item = {k: r[k] for k in ("created_at", "last_seen", "expires_at",
+                                      "client_ip", "user_agent")}
+            item["current"] = r["id"] == current_id
+            out.append(item)
+        return out
+
+    def delete_other_sessions(self, user_id: str, keep_id: str) -> int:
+        """Sign this account out everywhere except the session making the request.
+
+        The ``EXISTS`` guard makes the statement all-or-nothing with respect to the caller: two
+        devices pressing "sign out others" at the same moment would otherwise delete each
+        other's session and leave the account signed out *everywhere*. With the guard the first
+        statement to run wins and the loser deletes nothing — it finds its own row already gone
+        and the route answers 401, which is the truth: that session was signed out.
+        """
+        with self._lock:
+            cur = self._conn.execute(
+                "DELETE FROM sessions WHERE user_id=? AND id<>?"
+                " AND EXISTS (SELECT 1 FROM sessions WHERE id=?)",
+                (user_id, keep_id, keep_id))
+            self._conn.commit()
+        return cur.rowcount
+
     def purge_sessions(self) -> int:
         with self._lock:
             cur = self._conn.execute("DELETE FROM sessions WHERE expires_at < ?", (utcnow(),))

@@ -289,6 +289,33 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         state.db.log_event("signed out", user_id=user.id)
         return {"ok": True}
 
+    @app.get("/api/auth/sessions")
+    async def my_sessions(user: Principal = Depends(get_current_user)) -> dict[str, Any]:
+        """Where this account is signed in. Session tokens are not part of the answer.
+
+        ``current`` is decided by ``user.session_id`` — the *hashed* key stored in the table —
+        not by the cookie value, which is never comparable to a row id.
+        """
+        rows = state.db.list_sessions(user.id, current_id=user.session_id)
+        return {"sessions": rows, "count": len(rows)}
+
+    @app.post("/api/auth/sessions/revoke-others")
+    async def revoke_other_sessions(user: Principal = Depends(get_current_user)) -> dict[str, Any]:
+        """Sign out every other device. This session keeps working, so nobody logs themselves out.
+
+        ``keep`` must be the hashed session key: passing the raw cookie would match no row and
+        the caller would delete their own session along with the rest.
+        """
+        n = state.db.delete_other_sessions(user.id, user.session_id)
+        if state.db.get_session(user.session_id) is None:
+            # Another device revoked this session a moment ago: report it instead of pretending
+            # the request worked, so the UI stops using a dead cookie.
+            raise HTTPException(401, "this session was signed out by another device",
+                                headers={"WWW-Authenticate": "Session"})
+        if n:
+            state.db.log_event(f"signed out {n} other session(s)", user_id=user.id)
+        return {"ok": True, "revoked": n}
+
     @app.get("/api/auth/me")
     async def whoami(user: Principal = Depends(get_current_user)) -> dict[str, Any]:
         return {
