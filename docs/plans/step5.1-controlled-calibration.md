@@ -5,6 +5,11 @@ below waits for explicit approval.
 
 Step 5 is accepted at `9ea03fb44c48` (pushed to `origin/main`). Step 6 is out of scope.
 
+Revision history: first draft `55a9499` → command fixes `25e3710` → **this revision** adds the
+calibration safety gates (§3.1), the production DB safeguards (§6.1), the binding phase separation
+(§0.1) and the per-phase approval gates (§11). The plan is approved as an architectural basis;
+**execution is still not authorised**.
+
 ## 0. Verified state at plan time (2026-11-01, ~13:05 MSK)
 
 | fact | value | how it was read |
@@ -35,7 +40,24 @@ Consequences that shape the whole plan:
 3. No memory telemetry exists for `upscale-realesrgan` and `style-anime` at all; `vlm-caption` has 2
    rows, `asr-large` 1. That gap is what Objective B/C exist to close.
 
+## 0.1 Phase separation (binding)
+
+The three phases are separate authorisations. Each has its own approval gate (§11); finishing or
+failing one never rolls into the next, and no phase may borrow another phase's approval.
+
+| phase | scope | may write | hard restrictions |
+|---|---|---|---|
+| **A — runtime activation** | backup, owner-run systemd restart of `comfyui-studio.service`, API verification (401 → 200, cost counters, DB unchanged) | nothing, except the single short-lived session row if M1 is approved | **no calibration**, no job submission, no engine call, no ComfyUI restart, no schema/config change |
+| **B — calibration** | the four workflows of §3, one at a time, two runs each as a **ceiling** | new `jobs`/`outputs`/`job_telemetry` rows carrying the `calib51-` marker | starts only after **explicit approval**; no WAN 2.2; no Step 6; one workflow at a time; no modification of existing rows |
+| **C — attribution** | child-process RSS observations only, written to the JSONL artefact | nothing in the DB | no systemd unit modification, no `Delegate=yes`, no delegated cgroups, no `JobManager`/scheduler change, no new memory metric in the API or the schema |
+
+Phase C at this stage is **observation only**: the `pgrep -P` child walk described in §5 and §9 (who
+is a child of Studio, how much RSS it holds). Everything else in §9 stays a proposal, unimplemented.
+
 ## 1. Objective A — runtime activation procedure
+
+This phase writes no job and runs no workflow. Its only products are a verified backup and a working
+process serving the four memory routes.
 
 ### A0. Pre-flight gate (read-only, repeat immediately before the restart)
 
@@ -86,7 +108,7 @@ curl -s --max-time 4 http://127.0.0.1:8188/queue | head -c 120                  
 
 401 (not 404) is the proof of activation: the route exists and the session dependency is enforced.
 
-### A4. Authenticated verification (needs an approval decision, §10 item 2)
+### A4. Authenticated verification (needs the **A-auth** gate, §11)
 
 Unauthenticated 401 proves the route exists but not that it answers. Three ways to see a 200:
 
@@ -169,7 +191,7 @@ writing); a plain `cp` of a live DB is not.
 Rollback never requires a ComfyUI restart. ComfyUI's state (loaded models, container uptime) is
 independent of Studio.
 
-## 3. Calibration matrix — four workflows, two sequential runs each
+## 3. Calibration matrix — four workflows, up to two sequential runs each
 
 Parameters are copied from the last real run of each workflow so that the result is comparable with
 history. Inputs and models were checked to exist on disk (paths relative to the repo root).
@@ -182,6 +204,59 @@ history. Inputs and models were checked to exist on disk (paths relative to the 
 | 4 | `style-anime` | graph (ComfyUI) | `{"prompt":"masterpiece, high score, 1girl, silver hair, red scarf, snowy village background, warm light, detailed eyes","negative":"lowres, worst quality, low quality, text, signature, watermark, blurry, bad anatomy","width":1024,"height":1024,"steps":28,"cfg":6.0,"batch_size":1,"seed":…}` | `input/example.png`; `models/checkpoints/animagine-xl-4.0.safetensors` 6.94 GB | 32.5 s |
 
 Order matters: cheapest and most already-measured first, so an abort still leaves usable data.
+
+### 3.1 Calibration safety gates (binding)
+
+Two runs per workflow is a **ceiling, not a target**. A clean observation beats a complete matrix; if
+four runs produce four clean observations and the rest look contaminated, the phase ends with four
+observations and a written reason, not with four more rows of noise.
+
+Gates, in order — each one must pass before the next workflow is submitted:
+
+| order | workflow | gate before submitting | gate after the last run |
+|---|---|---|---|
+| 1 | `vlm-caption` | full A0-style pre-flight + DB counters (§6.1) | keep both observations regardless of contamination |
+| 2 | `asr-large` | same; only if run 1 left `MemAvailable ≥ 8 GB` and no pressure events | same |
+| 3 | `upscale-realesrgan` | **only if memory conditions remain safe**: `MemAvailable ≥ 8 GB`, ComfyUI cgroup `anon` not above its post-run-2 baseline + 1 GB, no pressure events in the previous run, and the engine queue empty | same |
+| 4 | `style-anime` | **only after a fresh memory assessment** (§3.1.1), never in the same burst as run 3 | same |
+
+Rules:
+
+1. **`vlm-caption` and `asr-large` run first.** They are the host lane, already have prior rows, and
+   their measured peak is +0.4 GB / +2.0 GB — the cheapest way to prove the harness and the sampling
+   are sound before anything touches the 6.9 GB checkpoint.
+2. **`upscale-realesrgan` runs only if memory conditions remain safe** (gate row 3).
+3. **`style-anime` runs only after a fresh memory assessment** — a dedicated read of
+   `/proc/meminfo`, both cgroups (`memory.current`, `memory.stat` anon/file), `/proc/pressure/memory`
+   and the GPU GTT/VRAM counters, taken immediately before submission, not reused from an earlier
+   workflow.
+4. **`style-anime` is never started with `MemAvailable < 8192 MB`.** Below that, the run is
+   cancelled *before submission* (not mid-run) and the workflow is recorded as `skipped:memory_floor`
+   with the reading that caused it. 8 GB is a floor, not a budget: it must be satisfied by the fresh
+   assessment, after any cooldown.
+5. **Every observation is preserved**: clean, contaminated, and failed runs alike. No row is deleted
+   and no row is retried "to get a cleaner one". A failed run stays in the report with its error and
+   its labels; the JSONL artefact is append-only.
+6. **Existing production jobs and telemetry are never deleted**, not to make room, not to tidy up, not
+   as part of a rollback. `jobs.prune()` (which the service itself calls when history grows) is not
+   invoked by the harness, and nothing in this plan calls `DELETE`.
+
+#### 3.1.1 The fresh assessment, concretely
+
+```bash
+# values consumed by gate 4; all read-only
+grep -E 'MemTotal|MemAvailable' /proc/meminfo
+cat /sys/fs/cgroup/system.slice/comfyui-studio.service/memory.current
+grep -E '^(anon|file) ' /sys/fs/cgroup/system.slice/comfyui-studio.service/memory.stat
+cat /sys/fs/cgroup/system.slice/docker-d0e615…scope/memory.current
+grep -E '^(anon|file) ' /sys/fs/cgroup/system.slice/docker-d0e615…scope/memory.stat
+cat /proc/pressure/memory
+cat /sys/class/drm/card*/device/mem_info_gtt_used /sys/class/drm/card*/device/mem_info_vram_used
+curl -s http://127.0.0.1:8188/queue
+```
+
+The numbers and the timestamp of this read go into the JSONL next to the `style-anime` run, so the
+decision to start it is auditable rather than remembered.
 
 `upscale-realesrgan` and `style-anime` use the graph lane and **do not exist in `job_telemetry` yet** —
 they are the real prize. Their `example.png`/`ref_raccoon.png` inputs are small, so GPU time stays
@@ -205,7 +280,7 @@ absent (4).
 
 | item | estimate | basis |
 |---|---|---|
-| 8 runs of compute | ≈ 4.5 min (2×25 s + 2×27 s + 2×(21–49 s) + 2×33 s) | historical `duration_s` per workflow |
+| 8 runs of compute | ≈ 4.5 min (2×25 s + 2×27 s + 2×(21–49 s) + 2×33 s) | historical `duration_s` per workflow; **8 is the ceiling — the real cost shrinks if the phase stops early under §3.1** |
 | cooldown between runs | 30 s × 8 = 4 min | lets page cache and GTT settle; baseline window |
 | baseline windows (10 s before + 10 s after each run) | 2.7 min, overlaps cooldown | §5 |
 | submission/verification overhead | ~1 min per run ≈ 8 min | queue wait + row checks |
@@ -283,6 +358,97 @@ Labels to attach (each becomes a field in the report, not a silent footnote):
   283 ms host-only ones, so it does not track the workload. It is recorded but never used as a signal
   until it is understood (see §9).
 
+## 6.1 Production DB safeguards
+
+Calibration writes **new** rows; it never rewrites, re-labels or deletes an existing one. These checks
+run around every single submission — not once per phase.
+
+### 6.1.1 Before each submission
+
+1. **Verify the marker.** Every calibration row must be submitted with
+   `client_token = calib51-<workflow>-<n>` where `<n>` is `1` or `2`, and the synthetic user marker
+   `user_id = "calib51"`. The harness asserts the token it is about to use matches
+   `^calib51-[a-z0-9-]+-[12]$` before it submits anything; a token that does not match aborts.
+2. **Verify no duplicate submission exists.** A `client_token` hit makes `JobManager.submit()` return
+   the existing row instead of creating a new one, so a silent duplicate would look like a fresh job.
+   The check is explicit before submitting:
+   ```bash
+   q "select id, status, created_at from jobs where client_token = 'calib51-vlm-caption-1'"
+   ```
+   Expected: empty. Anything returned means that run already exists — stop, do not re-submit, inspect.
+   Also assert `q "select count(*) from jobs where client_token like 'calib51-%'"` equals the number of
+   runs already completed.
+3. **Record the current counts**, as the baseline the post-run diff is computed against:
+   ```bash
+   q "select count(*) from jobs"; q "select count(*) from outputs"; q "select count(*) from job_telemetry"
+   ```
+4. **Record a fingerprint of everything that existed before**, so "unchanged" is a measurement and not
+   an opinion. Ids are hex strings, not integers, so rows are cut by `created_at` (stored as
+   `2026-11-01T08:20:33+00:00`), and `job_telemetry` has no `id` column at all:
+   ```bash
+   T0=$(date -u +%Y-%m-%dT%H:%M:%S+00:00)
+   studio/.venv/bin/python -c "
+   import sqlite3, hashlib
+   c = sqlite3.connect('file:studio/data/studio.db?mode=ro', uri=True)
+   def hq(sql):
+       rows = c.execute(sql).fetchall()
+       return hashlib.sha256(repr(rows).encode()).hexdigest()[:16], len(rows)
+   print('jobs     ', hq('select id,workflow_id,status,created_at,finished_at from jobs order by id'))
+   print('outputs  ', hq('select id,job_id,filename,size,created_at from outputs order by id'))
+   print('telemetry', hq('select job_id,workflow_id,status,execution_ms,memory_before_mb,memory_peak_mb,memory_after_mb from job_telemetry order by created_at,job_id'))
+   print('nonterminal', hq(\"select id from jobs where status in ('running','queued')\"))
+   print('T0', '${T0}')
+   "
+   ```
+   The output (three hashes + counts + `T0`) is stored in the JSONL before submission.
+   `nonterminal` must be `(…, 0)`: a pre-existing job that is still running would change its own row
+   after `T0` and make the post-run comparison meaningless — if it is not empty, stop.
+5. **Ensure no existing record can be modified.** The harness only calls `submit()`; it never calls
+   `update`, `prune`, `cancel` on a foreign job, and never `DELETE`. Reviewable in the diff: the
+   calibration path imports `JobManager.submit` and nothing else that writes.
+6. Engine queue empty and no job running (re-checked, not inherited from the previous run).
+
+### 6.1.2 After each workflow
+
+1. **SQLite integrity** — the database must still be sound:
+   ```bash
+   q "pragma integrity_check"; q "pragma user_version"
+   ```
+   Expected `ok` and `3`. Anything else stops the phase immediately.
+2. **Existing records unchanged** — recompute the same fingerprints, restricted to rows created before
+   `T0`, and compare with what was recorded before submission:
+   ```bash
+   studio/.venv/bin/python -c "
+   import sqlite3, hashlib
+   T0 = '${T0}'
+   c = sqlite3.connect('file:studio/data/studio.db?mode=ro', uri=True)
+   def hq(sql):
+       rows = c.execute(sql).fetchall()
+       return hashlib.sha256(repr(rows).encode()).hexdigest()[:16], len(rows)
+   print('jobs     ', hq(f'select id,workflow_id,status,created_at,finished_at from jobs where created_at < \'{T0}\' order by id'))
+   print('outputs  ', hq(f'select id,job_id,filename,size,created_at from outputs where created_at < \'{T0}\' order by id'))
+   print('telemetry', hq(f'select job_id,workflow_id,status,execution_ms,memory_before_mb,memory_peak_mb,memory_after_mb from job_telemetry where created_at < \'{T0}\' order by created_at,job_id'))
+   "
+   ```
+   All three must be **identical** to the pre-submission values. Calibration rows are excluded by
+   construction (`created_at >= T0`), so a changing status in our own rows cannot mask a change in an
+   old one. Counts must equal the pre-run counts plus exactly the number of runs just submitted
+   (1 per run), and nothing else.
+3. **New rows recorded separately** — the JSONL artefact (`studio/cache/calib51/<ts>-<workflow>.jsonl`)
+   gets one entry per calibration job with: job id, `client_token`, `user_id`, `workflow_revision`,
+   `graph_revision`, params, lane, concurrency, duration, `execution_ms`, the telemetry row, the
+   sampling series summary, the prediction it was compared against, the errors, the labels, and the
+   pre/post counts and hashes. The artefact is **append-only**; nothing is rewritten or pruned.
+4. **Never modify or delete pre-existing records**, including after a failure. A failed calibration
+   run stays in `jobs` with `status=failed` and its error text — that row is part of the record.
+
+### 6.1.3 What is explicitly not done
+
+No `UPDATE`/`DELETE` on `jobs`, `job_telemetry`, `outputs`, `events` or `users`; no `jobs.prune()`
+call from the harness; no status rewrite of a failed run; no "cleanup" of calibration rows at the end
+of the phase. If the phase is later abandoned, the rows stay and are marked as calibration rows by
+their marker — the owner decides, with a backup in hand, whether they should ever be removed.
+
 ## 7. Failure handling
 
 | situation | action |
@@ -295,9 +461,13 @@ Labels to attach (each becomes a field in the report, not a silent footnote):
 | DB write fails or row missing after completion | stop; do not submit further jobs |
 | unexpected concurrency observed | keep the row, label it, continue only if the next run starts clean |
 | total elapsed > 45 min | stop and report what was collected |
+| `MemAvailable` below the 8 GB floor before a submission | do not submit; record `skipped:memory_floor` with the reading; the phase may continue with no further workflows |
+| DB safeguard fails (fingerprint mismatch, integrity not ok, unexpected count delta) | stop the phase immediately; do not submit anything else; report the exact mismatch; restore from the §2 backup only with your approval |
+| a pre-existing job is non-terminal at `T0` | stop before submitting; the DB is not quiet enough for a controlled observation |
 
-Never: auto-retry in a loop, cancel a running job to "make it clean", unload models to reset, or edit
-a telemetry row.
+Never: auto-retry in a loop, cancel a running job to "clean" it, delete a failed run or a contaminated
+observation, unload models to reset, edit a telemetry row, or "fix" a fingerprint mismatch by
+re-baselining it.
 
 ## 8. Acceptance criteria for Step 5.1
 
@@ -325,7 +495,27 @@ C. Documentation
   C2 `docs/TECHNICAL_DEBT.md` gains or closes items for the calibration gap and the `vram` metric;
   C3 `gen_status.py` regenerated; suite green; no coverage regression below 76 %.
 
+D. Safety and DB safeguards (this revision)
+  D1 run order honoured: `vlm-caption` and `asr-large` first, `upscale-realesrgan` only after the
+      memory gate, `style-anime` only after the fresh assessment of §3.1.1;
+  D2 `style-anime` never submitted with `MemAvailable < 8192 MB` — a skipped run is recorded as
+      `skipped:memory_floor` with the reading that caused it, and the phase continues or ends;
+  D3 fewer than eight runs is acceptable and documented as a deliberate stop, never as a shortfall to
+      be made up later;
+  D4 contaminated and failed observations all present in the JSONL and in the report — count them and
+      show the count (clean / contaminated / failed / skipped), so "we kept everything" is checkable;
+  D5 before every submission: marker validated, duplicate `client_token` check empty, counts recorded,
+      fingerprints recorded, no non-terminal job at `T0`;
+  D6 after every workflow: `pragma integrity_check = ok`, `user_version = 3`, three fingerprints
+      identical, counts = previous + exactly the new runs;
+  D7 zero `UPDATE`/`DELETE` executed on existing rows (the harness has no such call; the fingerprint is
+      the evidence, not the promise).
+
 ## 9. Objective D — per-job memory attribution (investigation, no implementation)
+
+Phase C of this stage is **observation only** (§0.1): the child-RSS walk of Option 2's data source, run
+from the harness and written to the JSONL. No unit edit, no delegated cgroup, no change to
+`telemetry.py`, `JobManager` or the scheduler. Everything below is analysis to be approved separately.
 
 ### What exists today
 
@@ -417,14 +607,57 @@ docker inspect comfyui-strix-halo --format '{{.State.StartedAt}} {{.RestartCount
 journalctl -u comfyui-studio -n 60 --no-pager | tail -20
 ```
 
-Phase B — calibration, one workflow at a time (needs approval for the execution mode, §10 item 3)
+Phase B — calibration, one workflow at a time, only after the phase-B approval (§11). Order is fixed
+(`vlm-caption` → `asr-large` → *gate* → `upscale-realesrgan` → *fresh assessment* → `style-anime`), and
+two runs per workflow is a ceiling.
 
 ```bash
-# for each workflow, twice, sequentially:
-cd /home/dmitry/workspace/comfyui-strix-halo/studio/backend
+cd /home/dmitry/workspace/comfyui-strix-halo
+q() { studio/.venv/bin/python -c "import sqlite3,sys;c=sqlite3.connect('file:studio/data/studio.db?mode=ro',uri=True);print(c.execute(sys.argv[1]).fetchall())" "$1"; }
+
+# ---- BEFORE EVERY SUBMISSION (§6.1.1) ----
+q "select id,status,created_at from jobs where client_token='calib51-vlm-caption-1'"   # must be empty
+q "select count(*) from jobs where client_token like 'calib51-%'"                      # completed runs so far
+q "select count(*) from jobs"; q "select count(*) from outputs"; q "select count(*) from job_telemetry"
+T0=$(date -u +%Y-%m-%dT%H:%M:%S+00:00)
+studio/.venv/bin/python -c "  # fingerprints, §6.1.1 item 4
+import sqlite3, hashlib
+c = sqlite3.connect('file:studio/data/studio.db?mode=ro', uri=True)
+def hq(sql):
+    rows = c.execute(sql).fetchall(); return hashlib.sha256(repr(rows).encode()).hexdigest()[:16], len(rows)
+print('jobs     ', hq('select id,workflow_id,status,created_at,finished_at from jobs order by id'))
+print('outputs  ', hq('select id,job_id,filename,size,created_at from outputs order by id'))
+print('telemetry', hq('select job_id,workflow_id,status,execution_ms,memory_before_mb,memory_peak_mb,memory_after_mb from job_telemetry order by created_at,job_id'))
+print('nonterminal', hq(\"select id from jobs where status in ('running','queued')\"))
+print('T0', '${T0}')"
+grep -E 'MemAvailable' /proc/meminfo          # hard floor: style-anime needs >= 8 GB
+curl -s http://127.0.0.1:8188/queue           # must be empty
+
+# ---- SUBMIT + SAMPLE (harness; sequential; §5) ----
+cd studio/backend
 PYTHONPATH=. ../.venv/bin/python ../../studio/tools/reference_runs.py --workflow vlm-caption \
-  --runs 2 --json ../../studio/cache/calib51/vlm-caption.json        # harness to be extended as in §5
-# between runs: 30 s cooldown, baseline window sampled, DB row checked
+  --runs 2 --json ../../studio/cache/calib51/<ts>-vlm-caption.jsonl   # harness extended as in §5
+# between runs: 30 s cooldown, baseline window resampled, DB row verified
+
+# ---- AFTER EACH WORKFLOW (§6.1.2) ----
+cd /home/dmitry/workspace/comfyui-strix-halo        # back to the repo root: q() uses a relative DB path
+q "pragma integrity_check"; q "pragma user_version"
+studio/.venv/bin/python -c "  # fingerprints restricted to created_at < T0
+import sqlite3, hashlib
+T0 = '${T0}'
+c = sqlite3.connect('file:studio/data/studio.db?mode=ro', uri=True)
+def hq(sql):
+    rows = c.execute(sql).fetchall(); return hashlib.sha256(repr(rows).encode()).hexdigest()[:16], len(rows)
+print('jobs     ', hq(f'select id,workflow_id,status,created_at,finished_at from jobs where created_at < \'{T0}\' order by id'))
+print('outputs  ', hq(f'select id,job_id,filename,size,created_at from outputs where created_at < \'{T0}\' order by id'))
+print('telemetry', hq(f'select job_id,workflow_id,status,execution_ms,memory_before_mb,memory_peak_mb,memory_after_mb from job_telemetry where created_at < \'{T0}\' order by created_at,job_id'))"
+
+# ---- GATE BEFORE upscale-realesrgan (§3.1 row 3) ----
+# MemAvailable >= 8 GB, cgroup anon not above post-run-2 baseline + 1 GB, no PSI events, queue empty
+
+# ---- FRESH ASSESSMENT BEFORE style-anime (§3.1.1) ----
+# read /proc/meminfo, both cgroups (memory.current + memory.stat anon/file), /proc/pressure/memory,
+# GTT/VRAM, engine queue; record them in the JSONL; refuse to submit if MemAvailable < 8192 MB
 
 # after all runs
 ../.venv/bin/python -m pytest -q --junitxml=../cache/audit/junit.xml --cov=app \
@@ -443,8 +676,21 @@ not by hand)
 
 ## 11. Actions requiring your approval
 
+Approval is granted **per phase**, and the phases are not cumulative: approving A does not authorise B,
+and approving B does not authorise C.
+
+| gate | what it authorises | what it does not | state |
+|---|---|---|---|
+| **A** | the backup (§2) and the owner-run `systemctl restart comfyui-studio.service`, then the unauthenticated verification of §1 A3 | any calibration, any job, any engine call | not requested yet |
+| **A-auth** | authenticated verification of §1 A4 in mode M1 (one short-lived session row for the owner account, deleted afterwards) and, optionally, one throwaway `users` row for the cross-user check | any write to jobs/telemetry | not requested yet |
+| **B** | the four workflows of §3, in the fixed order, one at a time, ≤ 2 runs each, writing calibration rows into the production DB | WAN 2.2, Step 6, more than two runs per workflow, concurrent jobs, any change to existing rows | not requested yet |
+| **B-stand** | alternative to B: same runs on the disposable stand (`:8010`, copied DB), no production writes | verification of the live process's routes | not offered |
+| **C** | read-only `pgrep -P` child-RSS observation during the B runs, recorded in the JSONL | systemd edits, delegated cgroups, telemetry/API/schema changes, JobManager changes | not requested yet |
+
+The concrete items behind those gates:
+
 1. **`sudo systemctl restart comfyui-studio.service`** at a stated time — you run it (sudo is
-   password-protected here).
+   password-protected here). **Gate A.**
 2. **Authenticated verification mode**: M1 (I create one short-lived session row for the owner account
    and delete it), or M2 (you log in) — and, if you want live cross-user checks, permission to create
    one throwaway `users` row and remove it.
@@ -459,4 +705,6 @@ not by hand)
    change, not part of 5.1 execution.
 7. Optional: the `Delegate=yes` unit edit (Option 1) — only if you want exact per-job cgroup numbers.
 
-Until you approve at least items 1–5, nothing in this document is executed.
+Until you approve **gate A**, nothing in this document is executed. Gate B is requested separately,
+after A has been verified and reported. Until then: no restart, no session, no user, no job, no DB
+write, no telemetry edit, no systemd change, no calibration run.
