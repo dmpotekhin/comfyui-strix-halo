@@ -108,6 +108,11 @@ h3 { font-size: var(--step-1); }
 .stat .v { font-size: var(--step-3); font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; margin-top: 4px; }
 .stat .s { color: var(--fg-muted); font-size: 12px; }
 
+.meter { height: 6px; margin-top: 8px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.meter > i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.meter.warn > i { background: var(--warn); }
+.meter.danger > i { background: var(--danger); }
+
 .badge {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600;

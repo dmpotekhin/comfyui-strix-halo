@@ -138,9 +138,12 @@ async function viewDashboard() {
       <p>Live state of the local generation stack.</p></div></div>
     <div class="empty">Loading…</div>`;
 
-  let h, s;
+  let h, s, allowance;
   try {
-    [h, s] = await Promise.all([api.health(), api.stats()]);
+    // /api/me/usage is the one place the allowance is computed. The dashboard only prints what
+    // it is given — a limit that exists in the UI but not on the server would be a lie.
+    [h, s, allowance] = await Promise.all([api.health(), api.stats(),
+                                           api.usage().catch(() => null)]);
   } catch (e) {
     view.innerHTML = `<div class="page-head"><div><h1>Dashboard</h1></div></div>
       <div class="alert danger">Cannot reach the studio backend: ${esc(e.message)}</div>`;
@@ -152,6 +155,38 @@ async function viewDashboard() {
     : `<span class="badge danger"><span class="dot"></span>offline</span>`;
 
   const recent = await api.gallery({ limit: 8 }).catch(() => ({ outputs: [] }));
+
+  // Allowance card: every number comes from /api/me/usage, nothing is recomputed here.
+  const lm = allowance?.limits ?? null;
+  const gb = (n) => (n == null ? '—' : (n / 1e9).toFixed(1));
+  const meter = (used, cap) => {
+    if (!cap || cap <= 0) return '';
+    const pct = Math.min(100, (used / cap) * 100);
+    const tone = pct >= 100 ? ' danger' : pct >= 80 ? ' warn' : '';
+    return `<div class="meter${tone}"><i style="width:${pct.toFixed(1)}%"></i></div>`;
+  };
+  const allowanceCard = lm ? `
+      <div class="card">
+        <div class="card-head"><h2>Your allowance</h2><a href="#/jobs" class="dim">your jobs →</a></div>
+        <div class="grid cols-2" style="gap:10px">
+          <div>
+            <div class="k dim">Runs today</div>
+            <div class="num" style="font-size:var(--step-2)">${lm.jobs_today ?? 0}<span class="dim" style="font-size:var(--step-0)">
+              ${lm.max_jobs_per_day == null ? '· no limit' : '/ ' + lm.max_jobs_per_day}</span></div>
+            ${meter(lm.jobs_today || 0, lm.max_jobs_per_day)}
+          </div>
+          <div>
+            <div class="k dim">Output space used</div>
+            <div class="num" style="font-size:var(--step-2)">${gb(allowance.outputs?.bytes)}<span class="dim" style="font-size:var(--step-0)">
+              ${lm.max_output_bytes == null ? 'GB · no limit' : '/ ' + gb(lm.max_output_bytes) + ' GB'}</span></div>
+            ${meter(allowance.outputs?.bytes || 0, lm.max_output_bytes)}
+          </div>
+        </div>
+        <p class="dim" style="margin:14px 0 0;font-size:12px">
+          ${lm.active_jobs ?? 0} of ${lm.max_active_jobs == null ? '∞' : lm.max_active_jobs} slots busy ·
+          ${s.jobs?.queued ?? 0} waiting
+        </p>
+      </div>` : '';
 
   view.innerHTML = `
     <div class="page-head">
@@ -176,6 +211,7 @@ async function viewDashboard() {
     </div>
 
     <div class="grid cols-2">
+      ${allowanceCard}
       <div class="card">
         <div class="card-head"><h2>Queue</h2><a href="#/jobs" class="dim">all jobs →</a></div>
         <div class="grid cols-4" style="gap:10px">

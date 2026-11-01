@@ -95,6 +95,7 @@ export const api = {
   auth,
   health: () => get('/api/health'),
   stats: () => get('/api/stats'),
+  usage: () => get('/api/me/usage'),
   refreshEngine: () => post('/api/engine/refresh'),
 
   workflows: (params = {}) => {

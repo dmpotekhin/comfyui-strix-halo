@@ -99,6 +99,15 @@ def test_household_usage_is_admin_only(client):
     assert member.get("/api/users/usage").status_code == 403
 
 
+def test_dashboard_allowance_contract(client):
+    """The dashboard prints /api/me/usage and computes nothing itself, so these key names are
+    the whole contract between the two. Pin them: a rename must fail here, not in a browser."""
+    body = client.get("/api/me/usage").json()
+    assert {"jobs_today", "max_jobs_per_day", "active_jobs", "max_active_jobs",
+            "max_output_bytes", "upload"} <= set(body["limits"])
+    assert {"count", "bytes"} <= set(body["outputs"])
+
+
 def test_usage_requires_a_session(client):
     from starlette.testclient import TestClient
 
