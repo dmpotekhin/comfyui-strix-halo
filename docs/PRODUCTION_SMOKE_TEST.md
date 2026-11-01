@@ -287,3 +287,62 @@ Production acceptance по проверенным путям подтвержд�
 сервисе с тремя настоящими аккаунтами, результаты изолированы по владельцу, административный
 доступ сохранён. Не проверены: одновременная работа нескольких пользователей, роль Child,
 загрузка файлов под каждым аккаунтом, изменённые лимиты и квоты.
+
+---
+
+## 12. Очистка после теста (22:05–22:10 MSK)
+
+Тест принят (PASS), credentials и сессия убраны. Генераций, рестартов и `git push` не было.
+
+### 12.1 Учётные данные
+
+Удалены три записи штатной командой, профиль указан явно:
+
+```
+HERMES_HOME=/home/dmitry/.hermes/profiles/developer hermes vault rm vault_cdb35465c8a5   → Removed
+HERMES_HOME=/home/dmitry/.hermes/profiles/developer hermes vault rm vault_e5e2242a94d5   → Removed
+HERMES_HOME=/home/dmitry/.hermes/profiles/developer hermes vault rm vault_21bb69b6c683   → Removed
+```
+
+Проверка хранилища двумя независимыми путями:
+
+```
+hermes vault list    → Vault is empty. Add an item with `hermes vault add`.
+browser_vault list   → []
+VaultStore(...).list_items() → 0 записей
+```
+
+После того как записей не осталось, удалены ключ и шифртекст:
+
+```
+vault/vault.key       → removed
+vault/vault.json.enc  → removed
+осталось: vault/.vault.lock (0 байт, не секрет)
+```
+
+Поиск `vault.key` и `vault.json.enc` по всему `/home/dmitry/.hermes` — совпадений нет. В
+`~/.bash_history` вхождений `vault` — 0. В `~/add-family-vault.py` паролей нет (поиск присваиваний
+пароля по шаблону — 0). Другие данные Hermes не удалялись: скрипт `~/add-family-vault.py` и
+тестовые артефакты scratch-стенда (`cache/scratch/e2e/…`) остались на месте.
+
+Пароли аккаунтов этим не менялись — они по-прежнему действуют; если нужен полный разрыв, пароли
+следует сменить обычным способом.
+
+### 12.2 Сессия администратора
+
+`log out` нажат в том же браузере, после чего:
+
+```
+Storage.getCookies для домена 192.168.31.60  → ни одной cookie
+GET /api/auth/me                             → 401 {"detail":"authentication required"}
+страница                                     → отдана форма входа
+```
+
+Сессии администратора в используемом браузере больше нет. Никаких токенов из БД не извлекалось.
+
+Уточнение по серверу: `logout` удаляет ту сессию, чей токен предъявлен (`api.py:285–290` →
+`end_session`), и очищает cookie. В таблице `sessions` осталось 5 строк, из них 3 с будущим
+`expires_at`; это сессии, чьих cookie в браузере уже нет, они истекают сами. По условию задачи
+production DB не изменялась: `jobs` 150, `outputs` 169, `integrity` ok, `schema` 3 — те же
+значения, что в разделе 7, событий с 19:00 UTC не добавилось.
+
