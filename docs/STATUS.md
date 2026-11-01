@@ -1,15 +1,15 @@
 # STATUS — generated, do not hand-edit
 
-Regenerated: 2026-11-01 17:41 MSK by `python3 studio/tools/gen_status.py`.
+Regenerated: 2026-11-01 17:42 MSK by `python3 studio/tools/gen_status.py`.
 Every number below is computed from the working tree, from pytest artefacts, or from a
 live engine query. If a source is unavailable the row says so — nothing is filled in.
 
 ## Code
 
 | branch | `main` |
-| HEAD | `0f9e39b825b0` — docs(status): regenerate after activation |
-| committed | 2026-11-01T17:17:55+03:00 |
-| working tree | dirty |
+| HEAD | `9aca6f047c52` — fix(frontend): generate client tokens without a secure context |
+| committed | 2026-11-01T17:42:01+03:00 |
+| working tree | clean |
 
 ## Tests
 
@@ -73,7 +73,7 @@ Model files on disk: **12** (44.92 GB); catalogued: **19** (see `docs/model_depe
 
 ComfyUI 0.15.0 · torch 2.9.1+rocm7.2.0.git7e1940d4 · cuda:0 AMD Radeon Graphics : native (cuda) · VRAM 95.3/96.0 GB free
 
-Unified memory (sysfs/proc, independent of the engine): vram used gb 2.29, gtt used gb 0.2, mem total gb 30.5, mem available gb 17.9
+Unified memory (sysfs/proc, independent of the engine): vram used gb 2.16, gtt used gb 0.13, mem total gb 30.5, mem available gb 18.8
 
 Disk free on the project volume: 709.1 GB of 936.8 GB.
 
