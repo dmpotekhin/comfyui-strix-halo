@@ -337,6 +337,8 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         data = state.db.usage_for(user.id)
         data["limits"] = {"max_active_jobs": _active_job_limit(user),
                           "active_jobs": state.db.active_jobs_for(user.id),
+                          "jobs_today": state.db.jobs_today(user.id),
+                          "max_jobs_per_day": state.rbac.max_jobs_per_day(user.role),
                           "upload": state.rbac.may_upload(user.role)}
         return data
 
@@ -455,6 +457,29 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
     def _active_job_limit(user: Principal) -> int:
         """The tighter of the role's cap and the global ceiling (roles can only tighten)."""
         return state.rbac.max_active_jobs(user.role, int(settings.max_user_active_jobs))
+
+    def _check_submission_budget(user: Principal) -> None:
+        """Refuse a submission *before* a row is written: daily allowance, then queue depth.
+
+        Both checks are budget questions, so both live here and both answer 429 with a message
+        a person can act on. The daily allowance matters for a shared machine: the active-job
+        cap alone would let a child profile start a new run the moment the previous one ends.
+        """
+        per_day = state.rbac.max_jobs_per_day(user.role)
+        if per_day:
+            today = state.db.jobs_today(user.id)
+            if today >= per_day:
+                state.db.log_event("blocked a submission over the role's daily allowance",
+                                   level="warn", user_id=user.id)
+                raise HTTPException(429, f"daily limit reached: {today} of {per_day} runs today; "
+                                        "the allowance resets at midnight UTC")
+        limit = _active_job_limit(user)
+        mine = state.db.active_jobs_for(user.id)
+        if limit and mine >= limit:
+            state.db.log_event("blocked a submission over the role's active-job limit",
+                               level="warn", user_id=user.id)
+            raise HTTPException(429, f"you already have {mine} job(s) queued or running "
+                                     f"(limit {limit} for your account); wait for one to finish")
 
     def _media_allowed(type_: str, subfolder: str, filename: str, user: Principal) -> bool:
         """Is this media the caller's own?
@@ -792,13 +817,7 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         # Role gate first: a workflow this account may not use must never reach the engine, and
         # the answer is given before anything is written to the jobs table.
         _workflow_for(user, payload.workflow_id)
-        limit = _active_job_limit(user)
-        mine = state.db.active_jobs_for(user.id)
-        if limit and mine >= limit:
-            state.db.log_event("blocked a submission over the role's active-job limit",
-                               level="warn", user_id=user.id)
-            raise HTTPException(429, f"you already have {mine} job(s) queued or running "
-                                    f"(limit {limit} for your account); wait for one to finish")
+        _check_submission_budget(user)
         token = payload.client_token or idempotency_key
         try:
             job, created = await state.jobs.submit(payload.workflow_id, payload.params, token,
@@ -869,11 +888,7 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         # A rerun is a submission: same role gate and same active-job cap as POST /api/jobs.
         # Otherwise a child could replay (say) an admin's WAN run that was later restricted.
         _workflow_for(user, str(job["workflow_id"]))
-        limit = _active_job_limit(user)
-        mine = state.db.active_jobs_for(user.id)
-        if limit and mine >= limit:
-            raise HTTPException(429, f"you already have {mine} job(s) queued or running "
-                                    f"(limit {limit} for your account); wait for one to finish")
+        _check_submission_budget(user)
         try:
             # Always submitted as the caller: rerunning someone else's job (admin) must not
             # silently write the new files into the original owner's folder.

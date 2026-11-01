@@ -59,6 +59,19 @@ def kid(client, project):
     return {"client": c2, "admin": client, "state": st, "user": user, "project": project}
 
 
+def test_daily_allowance_is_parsed_and_reported(tmp_path):
+    from app.rbac import Rbac
+
+    p = tmp_path / "rbac.json"
+    p.write_text(json.dumps({"roles": {"child": {"max_jobs_per_day": 5,
+                                                 "max_active_jobs": 2}}}), encoding="utf-8")
+    rb = Rbac.load(p)
+    assert rb.max_jobs_per_day("child") == 5
+    assert rb.max_jobs_per_day("user") is None        # adults are not on an allowance
+    caps = rb.capabilities("child")
+    assert caps["max_jobs_per_day"] == 5 and caps["max_active_jobs"] == 2
+
+
 # --------------------------------------------------------------------------- Rbac as a value
 
 def test_defaults_deny_the_child_and_allow_the_adults(tmp_path):
@@ -247,6 +260,37 @@ def test_child_cannot_see_or_rerun_an_admin_job(kid):
     c = kid["client"]
     assert c.get("/api/jobs/admin-run-1").status_code == 404
     assert c.post("/api/jobs/admin-run-1/rerun").status_code == 404
+
+
+def test_child_daily_allowance_blocks_the_next_run(kid):
+    """One active job is not the only brake: the allowance caps the whole day."""
+    st = kid["state"]
+    install_policy(kid["project"], st, policy_doc(max_active_jobs=5, max_jobs_per_day=1))
+    seed_job(st, kid["user"]["id"], "kid-today-1", status="completed")
+    r = kid["client"].post("/api/jobs", json={"workflow_id": "kid-edit",
+                                              "params": {"prompt": "a cat"}})
+    assert r.status_code == 429
+    assert "daily limit" in r.text
+    assert st.db.count_jobs() == 1
+
+
+def test_rerun_counts_against_the_daily_allowance(kid):
+    st = kid["state"]
+    install_policy(kid["project"], st, policy_doc(max_active_jobs=5, max_jobs_per_day=1))
+    seed_job(st, kid["user"]["id"], "kid-today-2", workflow_id="kid-edit", status="completed")
+    r = kid["client"].post("/api/jobs/kid-today-2/rerun")
+    assert r.status_code == 429
+    assert "daily limit" in r.text
+
+
+def test_allowance_is_per_account_not_per_day_total(kid):
+    """The admin's own runs must not eat into the child's allowance."""
+    st = kid["state"]
+    install_policy(kid["project"], st, policy_doc(max_active_jobs=5, max_jobs_per_day=1))
+    seed_job(st, kid["admin"].users["dmitry"]["id"], "admin-today", status="completed")
+    r = kid["client"].post("/api/jobs", json={"workflow_id": "kid-edit",
+                                              "params": {"prompt": "a cat"}})
+    assert r.status_code in (200, 201, 202), r.text
 
 
 def test_child_has_no_admin_surfaces(kid):

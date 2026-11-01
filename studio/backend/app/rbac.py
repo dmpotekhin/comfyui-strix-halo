@@ -51,6 +51,10 @@ class RolePolicy:
     allow_upload: bool = False
     #: ``None`` means "no role-specific cap": the global ``settings.max_user_active_jobs`` applies.
     max_active_jobs: int | None = None
+    #: How many submissions the role may make per UTC day. ``None`` = unlimited. A household
+    #: control, not a performance limit: it is the only way to stop a child profile from
+    #: queueing hundreds of runs overnight on a machine the whole family shares.
+    max_jobs_per_day: int | None = None
 
     def allows_workflow(self, workflow_id: str, category: str | None = None) -> bool:
         if self.all_workflows:
@@ -109,6 +113,7 @@ def policy_from_dict(role: str, raw: dict[str, Any] | None) -> RolePolicy:
         model_folders=_str_set(raw.get("model_folders")),
         allow_upload=bool(raw.get("allow_upload", False)),
         max_active_jobs=_int_or_none(raw.get("max_active_jobs")),
+        max_jobs_per_day=_int_or_none(raw.get("max_jobs_per_day")),
     )
 
 
@@ -179,6 +184,10 @@ class Rbac:
             return int(fallback)
         return min(int(cap), int(fallback))
 
+    def max_jobs_per_day(self, role: str | None) -> int | None:
+        """The role's daily submission allowance, or ``None`` for no allowance limit."""
+        return self.policy(role).max_jobs_per_day
+
     def visible_workflow_ids(self, role: str | None,
                              defs: Iterable[Any]) -> set[str] | None:
         """``None`` means "no filtering"; otherwise the ids the role may see."""
@@ -206,6 +215,7 @@ class Rbac:
             "models": {"all": pol.all_models, "folders": sorted(pol.model_folders)},
             "upload": pol.allow_upload,
             "max_active_jobs": pol.max_active_jobs,
+            "max_jobs_per_day": pol.max_jobs_per_day,
         }
 
     def describe(self) -> dict[str, Any]:

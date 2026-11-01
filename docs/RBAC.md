@@ -58,13 +58,17 @@ Read at startup and on `POST /api/engine/refresh`, so changing it does not need 
 | `model_folders` | folders shown in `/api/models` and `/api/models/catalog` |
 | `allow_upload` | may `POST /api/uploads` (image inputs for img2img-style workflows) |
 | `max_active_jobs` | ceiling for this account's queued+running jobs; can only tighten the global `STUDIO_MAX_USER_ACTIVE_JOBS` |
+| `max_jobs_per_day` | how many submissions the account may make per UTC day (`null`/absent = no allowance). Reruns count. Checked before the queue-depth cap, so a finished run does not buy a new one |
 
 A workflow is allowed when **its id is listed or its category is listed**. Nothing else.
 `admin` cannot be restricted by this file — the owner must not be able to lock themselves out.
 
 Missing file → built-in defaults: admin and user unrestricted, child denied everything until a
 policy is written. The shipped `rbac.json` gives a child 55 of the 127 registered workflows
-(33 image-editing, 9 image-enhancement, 9 vision-language, plus 4 named generation workflows). Malformed file → same defaults plus a warning in the log; the child stays
+(33 image-editing, 9 image-enhancement, 9 vision-language, plus 4 named generation workflows),
+one active job at a time, and 40 runs per day; its model folders are exactly the ones those 55
+workflows reference (`checkpoints`, `upscale_models`, `vae`, `vision-models`, `vlm-models`),
+derived from the registry rather than guessed. Malformed file → same defaults plus a warning in the log; the child stays
 denied rather than accidentally trusted.
 
 ## Endpoint map
@@ -72,7 +76,7 @@ denied rather than accidentally trusted.
 | Route | admin | user | child |
 |-------|-------|------|-------|
 | `/api/workflows`, `/categories`, `/{id}`, `/validate`, `/graph-check`, `/{id}/stats` | all | all | filtered; 403 on a workflow not allowed, 404 on one that does not exist |
-| `POST /api/jobs`, `POST /api/jobs/{id}/rerun` | ✓ | ✓ | only allowed workflows, within `max_active_jobs` (429 when full) |
+| `POST /api/jobs`, `POST /api/jobs/{id}/rerun` | ✓ | ✓ | only allowed workflows, within `max_active_jobs` and `max_jobs_per_day` (429 with the number that was hit) |
 | `/api/jobs*`, `/api/gallery`, `/api/outputs*`, `/api/events`, `/api/telemetry` | all users' data | own data | own data |
 | `/api/models`, `/api/models/catalog` | everything | everything | only the folders in the policy |
 | `/api/uploads` | ✓ | ✓ | per `allow_upload` |

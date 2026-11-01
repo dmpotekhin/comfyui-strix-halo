@@ -513,6 +513,20 @@ class Database:
         return int(row["c"]) if row else 0
 
     # -- events -----------------------------------------------------------------------
+    def jobs_today(self, user_id: str) -> int:
+        """Jobs this account submitted since 00:00 UTC — the unit a daily allowance counts in.
+
+        UTC on purpose: a stored timestamp is UTC, and a local-midnight boundary would make the
+        allowance depend on the machine's timezone setting. The caller shows the number, not
+        the boundary, so nobody is surprised by "it reset at 3am".
+        """
+        day = utcnow()[:10]
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT COUNT(*) AS c FROM jobs WHERE user_id=? AND substr(created_at,1,10)=?",
+                (user_id, day)).fetchone()
+        return int(row["c"]) if row else 0
+
     def usage_for(self, user_id: str) -> dict[str, Any]:
         """What one account has produced so far. Read-only aggregates, no schema change.
 

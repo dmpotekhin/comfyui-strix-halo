@@ -3,9 +3,13 @@
     "Who may run what. Read by app/rbac.py at startup and by POST /api/engine/refresh.",
     "Semantics: a workflow is allowed when its id is listed OR its category is listed.",
     "A role that is absent from this file gets nothing; admin cannot be restricted here.",
-    "Model folders restrict what /api/models, /api/models/catalog and the gallery show;",
-    "deleting a model, downloading one and changing settings stay admin-only in the routes.",
-    "max_active_jobs can only tighten the global STUDIO_MAX_USER_ACTIVE_JOBS ceiling."
+    "Model folders use the same spelling as the rows in GET /api/models: bare names, so",
+    "  host-tool weights are 'vision-models', never 'host:studio/tools/vision-models'.",
+    "The child list below is exactly what the child's 55 allowed workflows can touch, so a",
+    "  workflow that gains a new model folder will visibly stop being complete for them.",
+    "Deleting or downloading a model and changing settings stay admin-only in the routes.",
+    "max_active_jobs can only tighten STUDIO_MAX_USER_ACTIVE_JOBS; max_jobs_per_day is a",
+    "  separate household allowance counted over UTC days (a rerun counts as a run)."
   ],
   "version": 1,
   "roles": {
@@ -18,21 +22,10 @@
     "child": {
       "categories": ["image-editing", "image-enhancement", "vision-language"],
       "workflows": ["format-square", "format-portrait", "format-landscape", "style-anime"],
-      "model_folders": [
-        "checkpoints",
-        "vae",
-        "upscale_models",
-        "text_encoders",
-        "clip_vision",
-        "vision-models",
-        "vlm-models",
-        "whisper-models",
-        "host:studio/tools/vision-models",
-        "host:studio/tools/vlm-models",
-        "host:studio/tools/whisper-models"
-      ],
+      "model_folders": ["checkpoints", "upscale_models", "vae", "vision-models", "vlm-models"],
       "allow_upload": true,
-      "max_active_jobs": 1
+      "max_active_jobs": 1,
+      "max_jobs_per_day": 40
     }
   }
 }
