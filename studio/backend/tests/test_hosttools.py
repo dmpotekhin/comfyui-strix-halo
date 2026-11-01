@@ -5,6 +5,7 @@ too — a tool that cannot run must say why, never return an empty result.
 """
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 import pytest
@@ -46,11 +47,42 @@ def test_unknown_voice_names_the_missing_file(tmp_path):
         hosttools.run_piper_tts({"text": "тест", "voice": "no-such-voice"}, tmp_path, timeout=10)
 
 
-def test_unique_target_never_overwrites(tmp_path):
+def test_unique_target_reserves_the_name_atomically(tmp_path):
+    """A user's file is never overwritten, and two calls never get the same name.
+
+    The empty placeholder *is* the reservation: a second worker scanning for a free counter hits
+    ``O_EXCL`` on it instead of agreeing on the same path and overwriting the first worker's output.
+    ``run_host_tool`` gives every reservation back when the run fails or is cancelled — and a name
+    that was already taken by a real file is not reserved at all.
+    """
+    existing = tmp_path / "tts_ru_00001_.wav"
+    existing.write_bytes(b"user-file")
     first = hosttools._unique_target(tmp_path, "tts_ru", "wav")
-    first.write_bytes(b"x")
     second = hosttools._unique_target(tmp_path, "tts_ru", "wav")
-    assert first != second and not second.exists()
+    assert first != existing and second != existing and first != second
+    assert first.stat().st_size == 0 and second.stat().st_size == 0   # reserved, still empty
+    hosttools._release_reservations(keep=False)                       # failure / cancellation path
+    assert not first.exists() and not second.exists()
+    assert existing.read_bytes() == b"user-file"                      # untouched
+
+
+def test_two_threads_never_pick_the_same_output_name(tmp_path):
+    """The race the old counter scan lost: both threads used to compute the same free name."""
+    names: list[Path] = []
+    lock = threading.Lock()
+
+    def grab():
+        path = hosttools._unique_target(tmp_path, "race", "png")
+        with lock:
+            names.append(path)
+
+    threads = [threading.Thread(target=grab) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(names) == 8
+    assert len({n.name for n in names}) == 8
 
 
 def test_source_outside_project_is_refused(tmp_path):
