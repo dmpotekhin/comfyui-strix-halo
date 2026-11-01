@@ -232,6 +232,65 @@ Effort: **S** ≤ 1 day, **M** 2-3 days, **L** ≥ 1 week (one senior dev, this 
   average `engine_ms` without checking `execution_ms`.
 * **Effort**: M. **Risk**: low (investigation only).
 
+### TD-29 · 9 of 23 model files have no loadable-weight estimate
+* **Evidence**: `studio/registry/model_memory.json` — 7 ONNX files and 2 torch pickle files carry
+  `estimated_loaded_weights_mb: null` / `insufficient_data`; the 4 GGUF/GGML files are `low` (dtype sum
+  off the GGUF header only). `sam-region-restyle` therefore has `coverage_percent` 16.7 %.
+* **Why it hurts**: the four ONNX SAM components are the bulk of that workflow, so its analytic forecast
+  is one sixth of the truth. `null` is honest, but a user reading `partial_estimate_mb` needs to know
+  the number is a floor, not a forecast.
+* **Task**: read ONNX initializer dtypes and the full GGUF tensor-info array (`n_tensors` entries, each
+  with its `ggml_type`); keep `null` for anything that still cannot be resolved. Never assume fp16.
+* **Effort**: M. **Risk**: none — catalog only.
+
+### TD-30 · Runtime overhead is unknown for every workflow
+* **Evidence**: `analyze.py` always emits a `runtime_overhead` component with `mb: None`; coverage is
+  66.7 % (vlm-caption), 75.0 % (video-t2v-wan22), 87.5 % (upscale-realesrgan). `expected_mb` therefore
+  comes only from history, never from components.
+* **Why it hurts**: the estimator cannot answer "what will this cost" for a workflow that has never run,
+  which is exactly the case it exists for.
+* **Task**: derive overhead as `measured_delta − known weights` on isolated runs and store it as a
+  measured prior keyed by execution lane and family; expose its sample count next to the value.
+* **Effort**: M. **Risk**: low — no admission wiring yet.
+
+### TD-31 · The estimator is advisory only, by design
+* **Evidence**: `api.py` registers the routes under a comment stating that admission wiring is step 6;
+  every estimate response carries `cost: {database_writes: 0, engine_calls: 0, jobs_created: 0}`.
+* **Why it hurts**: nothing acts on the numbers, so a `high` risk forecast does not stop a submit.
+* **Task**: step 6, on explicit approval, with a shadow mode first (forecast logged, not enforced).
+* **Effort**: L. **Risk**: high if rushed — this is the first place a wrong estimate can refuse work.
+
+### TD-32 · Calibration rests on 8 comparable ledger rows
+* **Evidence**: `tools/memory_calibrate.py` against production `job_telemetry`: 8 observations with
+  memory numbers, 4 scored, 2 with a magnitude ≥ 100 MB, MAE 23.7 MB / MAPE 6.5 %, all of them
+  `unproven_concurrency` because `jobs.py` records service-level high-water marks in the `concurrency`
+  block, not per-run occupancy.
+* **Why it hurts**: confidence is capped at `low` for every workflow, and a single unlucky pair of runs
+  can move the median a lot.
+* **Task**: run the controlled calibration set (proposal in `docs/plans/step5-memory-estimator.md` §7);
+  to get `basis: isolated` the ledger needs per-run occupancy counters, which is a `jobs.py` change and
+  therefore has to be agreed separately.
+* **Effort**: S (runs) + M (counters). **Risk**: medium — the runs occupy the GPU/CPU lanes.
+
+### TD-33 · Host tools' own peak RSS is invisible
+* **Evidence**: `probe.snapshot()` separates `physical` / `process` (`studio_rss`, `comfyui_container`) /
+  `gpu`; a host tool's child process peak is nowhere in the ledger — host runs are known only through
+  whole-machine `MemAvailable`.
+* **Why it hurts**: `asr-large` and `vlm-caption` forecasts cannot separate the tool's own footprint
+  from everything else running, so their confidence can never exceed `low` while other work overlaps.
+* **Task**: sample the supervised child PID tree in `hosttools._run_supervised` and record its peak
+  alongside the job. This touches `jobs.py`/`hosttools.py` and is out of scope for step 5.
+* **Effort**: M. **Risk**: medium — supervision already carries cancellation and grace-period logic.
+
+### TD-34 · Memory routes exist in code but not in the running service
+* **Evidence**: `app.routes` contains `GET /api/memory/snapshot|models|history` and
+  `POST /api/memory/estimate`; the live service on `192.168.31.60:8000` answers 404 for them because
+  the running process was started before this change.
+* **Why it hurts**: nothing is broken, but a reader of the docs may conclude the routes do not exist.
+* **Task**: restart `comfyui-studio.service` (not ComfyUI) in an approved window; then `/api/memory/*`
+  answers 401 without a session and the normal payload with one.
+* **Effort**: XS. **Risk**: low — a Studio restart does not touch the ComfyUI process or the queue.
+
 ## P3 — hygiene
 
 | # | Item | Evidence | Note |
@@ -255,7 +314,7 @@ Effort: **S** ≤ 1 day, **M** 2-3 days, **L** ≥ 1 week (one senior dev, this 
 |---|---|
 | 1 (foundation) | TD-1, TD-8, TD-2 (partial: jobs/models routers), TD-11 |
 | 2 (workflow intelligence) | ~~TD-10~~, ~~TD-7~~, TD-6 (only if an LLM layer is approved) — the first two shipped 2026-11-01 |
-| 3 (model/hardware intelligence) | TD-3 (measurement shipped in step 3; the estimator itself is TD-3), TD-4, TD-5, TD-13, TD-23, TD-24 |
+| 3 (model/hardware intelligence) | TD-3 (measurement shipped in step 3; the advisory estimator shipped in step 5), TD-29, TD-30, TD-32, TD-4, TD-5, TD-13, TD-23, TD-24 |
 | 4 (knowledge/learning) | TD-7 (history identity) |
 | 5 (studio) | TD-9, TD-15 |
 | 6 (automation) | TD-6, TD-4, TD-16 |

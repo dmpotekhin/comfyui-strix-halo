@@ -102,10 +102,10 @@ render. The LLM adapter is approved as a separate track (llama.cpp first, off by
 |---|---|---|---|
 | 1 | Make the suite verifiable: pytest + pytest-cov + generated `docs/STATUS.md`, plus the four reference runs | **done 2026-10-31** | 297 tests, 0 failures, 70.3% coverage, 29 s; `docs/STATUS.md`; `docs/REFERENCE_RUNS.md`; harnesses `studio/tools/gen_status.py`, `studio/tools/reference_runs.py` |
 | 2 | Graph type-check against `/object_info` (warn first) + workflow revision hash | **done 2026-11-01** | TD-10, TD-7, TD-8 — `app/graphcheck.py` (127 defs: 40 graph / 82 host / 5 chain; 125 clean, 2 warnings, 0 errors), `app/revisions.py`, schema v2 (`schema_migrations`), `GET /api/workflows/{id}/graph-check`, preflight in `submit`; `tools/check_registry.py`; docs `WORKFLOW_GRAPH_CHECK.md`, `WORKFLOW_REVISIONS.md`, `schema-migrations.md` |
-| 3 | Execution telemetry + benchmark ledger | next | A10, TD-16 — the ledger already exists in embryo (`studio/cache/audit/refruns.db`, engine timings in the ledger) |
-| 4 | Separate lanes: GPU serial vs CPU host pool | pending | TD-4 — measured cost of not doing it: 26.7 min head-of-line block |
-| 5 | Model Memory Estimator + measured consumption statistics | pending | TD-3; must use `MemAvailable`, not `/system_stats` vram (PROJECT_AUDIT §11 C-2) |
-| 6 | Resource-aware scheduler on top of 3+5 | pending | TD-3 |
+| 3 | Execution telemetry + benchmark ledger | **done 2026-11-01** | A10 — `app/telemetry.py` (0.5 s sampler over `/proc/meminfo`, ComfyUI cgroup, sysfs GPU, RSS), `job_telemetry` in schema v3, `app/benchmark.py`, `docs/EXECUTION_TELEMETRY.md`; 10 real rows in production |
+| 4 | Separate lanes: GPU serial vs CPU host pool | **done 2026-11-01** | TD-4 — two lanes under one `JobManager` (`gpu` serial / `cpu` pool of 2), soft admission on `MemAvailable`, `app/hosttools.py`; live 26-min run kept `comfy_running <= 1`; controlled cancel proven (`queue_cancel_check.py`, 162 ms) |
+| 5 | Model Memory Estimator + measured consumption statistics | **MVP done 2026-11-01 — advisory only**, not wired to admission | TD-3, TD-29…TD-34 — `app/memory/*` (catalog → analyzer → profiler → pure estimator → read-only API), `studio/registry/model_memory.json`, `tools/memory_calibrate.py`; uses `MemAvailable`, never `/system_stats` vram; plan+decisions in `docs/plans/step5-memory-estimator.md` |
+| 6 | Resource-aware scheduler on top of 3+5 | **next — needs owner approval**, nothing started | TD-31 — would be the first place a forecast can refuse or reorder work |
 | 7 | Migrations + `schema_version` before any new table | **done early 2026-11-01** (pulled into step 2, because the revision columns needed it) | TD-8 |
 | 8 | Docs truth pass (auth/bind/test totals) | partially done — the three Phase 0 documents are corrected; `PROJECT_SUMMARY.md` and `implementation_status.md` are not | TD-1 |
 | 9 | Upload hardening + quotas; router extraction for jobs/models/workflows | pending | TD-11, TD-2 |
@@ -143,9 +143,12 @@ means executed against the live engine, not "graph generated".
 | Architect (NL → definition) | 4 | **only with an approved local LLM adapter (TD-6)**; must emit this project's JSON DSL, not a new YAML schema; every generated definition goes through the deterministic builder and must be validated before it is offered |
 
 ### Phase 3 — Model and hardware intelligence
-Model memory estimator (learned, advisory) → compatibility graph (model × node class × workflow
-revision) → duplicate detector (hash index) → smart downloader v2 (queue, resume across restarts,
-already 80% there) → adaptive optimizer (only after the ledger can prove a win).
+Model memory estimator — **MVP shipped 2026-11-01 in advisory form**: catalog of the real files,
+workflow analyzer, historical profiler and a pure estimator behind read-only API routes. It still owes
+a calibration set and a runtime-overhead prior (TD-29, TD-30, TD-32) before anything may act on it.
+Then: compatibility graph (model × node class × workflow revision) → duplicate detector (hash index) →
+smart downloader v2 (queue, resume across restarts, already 80% there) → adaptive optimizer (only after
+the ledger can prove a win).
 
 ### Phase 4 — Knowledge and learning
 Start with a plain index over the local docs + catalog + registry (no vector DB — the corpus is small;

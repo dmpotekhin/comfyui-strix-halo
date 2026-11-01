@@ -1111,6 +1111,13 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         return {"ok": True, "engine_error": state.env_error,
                 "workflows": state.registry.stats()}
 
+    # -- advisory memory estimator ----------------------------------------------------
+    # Read-only by construction: these routes forecast, they never enqueue, cancel or touch the
+    # engine. Admission wiring is Step 6 and deliberately absent here.
+    from .memory.router import register_memory_routes
+
+    register_memory_routes(app, state)
+
     # -- frontend ---------------------------------------------------------------------
     dist = layout.frontend_dist
     if dist.is_dir():

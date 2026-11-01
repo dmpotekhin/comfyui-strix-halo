@@ -27,10 +27,13 @@ import ast
 import json
 import shutil
 import subprocess
+import os
 import sys
 import time
 import urllib.error
 import urllib.request
+import re
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -41,6 +44,8 @@ APP = STUDIO / "backend" / "app"
 ART = STUDIO / "cache" / "audit"
 OUT = ROOT / "docs" / "STATUS.md"
 COMFY_URL = "http://127.0.0.1:8188"
+STUDIO_URLS = (os.environ.get("STUDIO_URL"), "http://127.0.0.1:8000",
+               "http://192.168.31.60:8000")   # the service binds the LAN address, not loopback
 
 GB = 1024 ** 3
 
@@ -349,11 +354,98 @@ def render(junit: Path | None = None, coverage: Path | None = None) -> str:
         A("**No artefact.** Run `../.venv/bin/python tools/queue_cancel_check.py "
           "--json ../cache/audit/cancel_check.json` from `studio/backend`.")
     A("")
+    A("## Advisory memory estimator")
+    A("")
+    mem_path = STUDIO / "registry" / "model_memory.json"
+    if not mem_path.exists():
+        A("**No catalog.** Run `python -m app.memory.catalog --write` from `studio/backend`.")
+    else:
+        try:
+            catalog = json.loads(mem_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            catalog = None
+            A(f"Catalog unreadable: {exc}")
+        if catalog:
+            cards = catalog.get("models") or []
+            A(f"Catalog: **{catalog.get('count')}** files, parser `{catalog.get('parser_version')}`, "
+              f"card version `{catalog.get('card_version')}`, generated {catalog.get('generated_at')} "
+              f"(`studio/registry/model_memory.json`, derived from the files).")
+            A("")
+            A("| quantity | confidence split |")
+            A("|---|---|")
+            for key, label in (("storage_size_mb", "storage_size_mb"),
+                               ("estimated_loaded_weights_mb", "estimated_loaded_weights_mb"),
+                               ("estimated_runtime_peak_mb", "estimated_runtime_peak_mb")):
+                split = Counter((card.get(key) or {}).get("confidence") or "missing" for card in cards)
+                A(f"| `{label}` | " + ", ".join(f"{name} {count}" for name, count in sorted(split.items())) + " |")
+            A("")
+            known = sum(1 for card in cards
+                        if (card.get("estimated_loaded_weights_mb") or {}).get("value") is not None)
+            A(f"Loaded weights known for {known} of {len(cards)} files; the rest stay `null` — "
+              "no coefficient is invented for a container the parser cannot read.")
+            A("")
+    router = APP / "memory" / "router.py"
+    if router.exists():
+        paths = re.findall(r'@app\.(get|post|put|delete)\(\s*"([^"]+)"',
+                           router.read_text(encoding="utf-8"))
+        A("Routes declared in `app/memory/router.py` (read-only, behind the existing session auth):")
+        A("")
+        for method, path in paths:
+            A(f"* `{method.upper()} {path}`")
+        A("")
+        live_code, live_url = None, None
+        for candidate in [url for url in STUDIO_URLS if url]:
+            try:
+                with urllib.request.urlopen(f"{candidate}/api/memory/snapshot", timeout=3) as response:
+                    live_code, live_url = response.status, candidate
+                break
+            except urllib.error.HTTPError as exc:
+                live_code, live_url = exc.code, candidate
+                break
+            except (urllib.error.URLError, OSError):
+                continue
+        if live_code == 401:
+            A(f"The running Studio (`{live_url}`) serves the route and answers 401 without a session, "
+              "as designed.")
+        elif live_code == 404:
+            A(f"The **running Studio (`{live_url}`) returns 404** for these routes: its process predates "
+              "them, so they exist in code but not in the live service until an approved restart (TD-34).")
+        elif live_code is None:
+            A("No Studio instance answered on "
+              + ", ".join(f"`{url}`" for url in STUDIO_URLS if url)
+              + ", so the live route state is unknown here.")
+        else:
+            A(f"The running Studio answered `{live_code}` for `/api/memory/snapshot` (unexpected for an "
+              "unauthenticated request — investigate).")
+        A("")
+    cal = ART / "memory_calibration.json"
+    if cal.exists():
+        try:
+            report = json.loads(cal.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            report = None
+            A(f"Calibration artefact unreadable: {exc}")
+        if report:
+            A(f"Last calibration (`tools/memory_calibrate.py`, readonly DB): "
+              f"{report.get('observations')} observations, {report.get('compared')} analysed, "
+              f"{report.get('forecasted')} forecastable, {report.get('scored')} scored, "
+              f"{report.get('scored_with_meaningful_magnitude')} above the "
+              f"{report.get('significant_threshold_mb')} MB significance threshold; "
+              f"MAE {report.get('mean_absolute_error_mb')} MB, "
+              f"MAPE {report.get('mean_absolute_percentage_error')} %.")
+            A("")
+            A("These numbers describe the scored runs only — they are not a general accuracy claim.")
+            A("")
+    else:
+        A("**No calibration artefact.** Run `../.venv/bin/python tools/memory_calibrate.py "
+          "--json ../cache/audit/memory_calibration.json` from `studio/backend`.")
+        A("")
     A("---")
     A("")
     A("Sources: `studio/cache/audit/junit.xml`, `studio/cache/audit/coverage.json`, "
       "`studio/registry/workflows/*.json`, `studio/registry/models_catalog.json`, "
-      "`studio/backend/app/hosttools.py` (AST), `/system_stats`, `/proc/meminfo`, sysfs.")
+      "`studio/backend/app/hosttools.py` (AST), `studio/registry/model_memory.json`, "
+      "`studio/cache/audit/memory_calibration.json`, `/system_stats`, `/proc/meminfo`, sysfs.")
     A("")
     return "\n".join(L)
 

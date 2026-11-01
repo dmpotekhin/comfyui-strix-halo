@@ -32,6 +32,8 @@ project's own status docs and **not** re-measured here.
 | A8 | GPU performance profiles | NOT_IMPLEMENTED | — | — |
 | A9 | Thermal / power monitor | PARTIALLY_IMPLEMENTED | `telemetry.HostProbe` reads `hwmon*/temp1_input` and `power1_average` plus `gpu_busy_percent`, aggregated per run into `metrics.gpu` | `test_telemetry.py` (fixture tree); live: 62 °C / 43.8 W peak on a real turbo run — collected, not yet surfaced as a live gauge |
 | A10 | Benchmark history | IMPLEMENTED | `job_telemetry` ledger (schema v3) records every run with revisions, durations, memory and error code; `/api/telemetry/runs|stats|memory|errors|export` (JSON/CSV), `/api/workflows/{id}/stats|benchmark|compare` | `test_telemetry_jobs.py` (8, real JobManager), `test_telemetry_api.py` (17), `test_benchmark.py` (21), `test_db_migrations.py`; live rows in `docs/EXECUTION_TELEMETRY.md` §7 |
+| A11 | Model memory catalog | IMPLEMENTED | `studio/registry/model_memory.json` — derived from the real files by `app/memory/catalog.py`: sha256, file size, dtype-summed weight bytes, three separate quantities (`storage_size_mb`, `estimated_loaded_weights_mb`, `estimated_runtime_peak_mb`), each carrying source / confidence / estimation_method / last_verified; 23 files, 9 of them `null` where the container says nothing (7 ONNX, 2 torch pickle) | `test_memory_catalog.py` (7, real safetensors/GGUF headers); generated twice → identical sha256 `3d5b54e7…` |
+| A12 | Pre-run memory estimator (advisory) | IMPLEMENTED | `app/memory/analyze.py|history.py|estimate.py|probe.py|router.py` + `GET /api/memory/snapshot|models|history`, `POST /api/memory/estimate` — partial forecasts (`known_components_mb`, `partial_estimate_mb`, `unknown_components`, `coverage_percent`), risk and confidence independent, history only from comparable runs (proven isolation → `unproven_concurrency` → none); **deliberately not wired to admission** (step 6) | `test_memory_analyze.py` (10), `test_memory_history.py` (12), `test_memory_estimate.py` (10), `test_memory_api.py` (11), `test_memory_calibrate.py` (7); live calibration `tools/memory_calibrate.py`: vlm-caption ±6.7 % on two real runs |
 
 ## B. Model intelligence
 
@@ -134,7 +136,7 @@ project's own status docs and **not** re-measured here.
 
 | # | Feature | Status | Evidence |
 |---|---|---|---|
-| G1 | REST API | IMPLEMENTED | 43 routes, `/api/docs` + `/api/openapi.json` (FastAPI); telemetry/benchmark routes added in step 3 | `/api/docs` |
+| G1 | REST API | IMPLEMENTED | 47 routes, `/api/docs` + `/api/openapi.json` (FastAPI); telemetry/benchmark routes added in step 3 | `/api/docs` |
 | G2 | Python SDK | NOT_IMPLEMENTED | `studio/tools/smoke_run.py` is an internal script against the HTTP API; not a packaged client |
 | G3 | Scheduled generation | NOT_IMPLEMENTED | `grep -ri "schedule\|cron" studio/backend/app` → 0 hits |
 | G4 | Multi-instance manager | NOT_IMPLEMENTED | one `ComfyClient`, one container; spawning a second engine is explicitly forbidden (`jobs.py:8-9`) |
@@ -173,7 +175,7 @@ project's own status docs and **not** re-measured here.
 
 | # | Requirement | Status | Evidence |
 |---|---|---|---|
-| J1 | Unit tests exist | IMPLEMENTED | 405 `def test_*` across 26 files (`STATIC` count 2026-11-01; 472 executed after parametrisation) | — |
+| J1 | Unit tests exist | IMPLEMENTED | 494 `def test_*` across 34 files (`STATIC` count 2026-11-01; 556 executed after parametrisation) | — |
 | J2 | Suite passes | IMPLEMENTED | **executed 2026-11-01 after step 3**: 474 tests, 0 failures, 0 errors, 36.8 s, coverage 75.2 % (`studio/cache/audit/junit.xml`, `coverage.json`); rendered into `docs/STATUS.md` | — |
 | J3 | ComfyUI integration tests | PARTIALLY_IMPLEMENTED | `test_integration_comfy.py` (5 tests) skipped unless the engine is up |
 | J4 | End-to-end UI verification | PARTIALLY_IMPLEMENTED | `visual-app-audit` results quoted in `implementation_status.md:54`; no automated e2e in the repo |
@@ -187,20 +189,25 @@ project's own status docs and **not** re-measured here.
 
 | Status | Count |
 |---|---:|
-| IMPLEMENTED | 39 |
+| IMPLEMENTED | 41 |
 | PARTIALLY_IMPLEMENTED | 24 |
 | NOT_IMPLEMENTED | 33 |
 | BROKEN | 0 |
 | NEEDS_VERIFICATION | 0 |
 
-(96 classified rows; counted from this file, not estimated. J2 moved to IMPLEMENTED on 2026-10-31
+(98 classified rows; counted from this file, not estimated. J2 moved to IMPLEMENTED on 2026-10-31
 after the suite was actually executed; C4 moved to IMPLEMENTED on 2026-11-01 after the validator was
 written and run over all 127 shipped definitions. Phase 1 step 3 (2026-11-01) moved A10, C8 and H5 to
 IMPLEMENTED and A9 to PARTIALLY_IMPLEMENTED: the `job_telemetry` ledger, the benchmark module and the
-error taxonomy now exist and were exercised on real runs. Current run: 474 passed, 75.2 % coverage —
-see `docs/STATUS.md`.)
+error taxonomy now exist and were exercised on real runs. Phase 1 step 5 (2026-11-01) moved A11 and A12
+to IMPLEMENTED: the model memory catalog and the advisory pre-run estimator exist, and the estimator was
+compared against real ledger rows (`tools/memory_calibrate.py`: 4 scored runs, MAE 23.7 MB, MAPE 6.5 % on
+the two runs with a meaningful magnitude). Those two numbers describe two `vlm-caption` observations and
+nothing else: they do **not** establish general accuracy, and no WAN, SDXL or SAM run has been calibrated.
+Current run: 556 passed, 77.2 % coverage — see `docs/STATUS.md`.)
 
 The shape matters more than the totals: everything that touches **execution** (queue, builder,
 registry, host tools, downloads, auth, isolation) is implemented and tested; everything named
-"intelligence" (estimator, scheduler, recommender, learner, agent, repair) is absent. The platform is a
+"intelligence" is still thin: the estimator now exists but only **advises** — it is not wired into
+admission, nothing is unloaded automatically, and no scheduler/recommender/learner/agent/repair exists. The platform is a
 reliable **executor** today, not yet an **assistant**.

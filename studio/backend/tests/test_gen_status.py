@@ -88,7 +88,8 @@ def test_test_facts_does_not_invent_a_pass(gen_status, tmp_path):
     assert facts["junit"] is None and facts["coverage"] is None
 
 
-def test_render_says_suite_not_run_when_artefacts_missing(gen_status, tmp_path):
+def test_render_says_suite_not_run_when_artefacts_missing(gen_status, tmp_path, monkeypatch):
+    monkeypatch.setattr(gen_status, "ART", tmp_path / "audit")   # the real repo may hold artefacts
     text = gen_status.render(tmp_path / "absent.xml", tmp_path / "absent.json")
     assert "No pytest artefact found" in text
     assert "Coverage artefact missing" in text

@@ -1,0 +1,1173 @@
+{
+  "card_version": 1,
+  "count": 23,
+  "generated_at": "2026-11-01T09:41:06+00:00",
+  "models": [
+    {
+      "architecture": null,
+      "architecture_source": "",
+      "container": "safetensors",
+      "estimated_loaded_weights_mb": {
+        "caveats": [
+          "mixed precision file; the loader decides the runtime dtype"
+        ],
+        "confidence": "medium",
+        "estimation_method": "safetensors_dtype_sum",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "safetensors_header",
+        "unit": "MB",
+        "value": 7342.8
+      },
+      "estimated_runtime_peak_mb": {
+        "caveats": [
+          "runtime peak is a property of the workflow, not of a single file"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "requires_a_per_workflow_measurement",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "file": "ace_step_v1_3.5b.safetensors",
+      "file_mtime": "2026-10-26T20:48:35+00:00",
+      "folder": "checkpoints",
+      "model_id": "checkpoints/ace_step_v1_3.5b.safetensors",
+      "quantization": null,
+      "quantization_source": "",
+      "sha256": "f07cad74c4adce52ca14ca1bdf74cf3c14cbafb0823b95eca4459467fa369f40",
+      "sha256_source": "studio/registry/models_catalog.json",
+      "storage_dtypes": {
+        "BF16": 6800.9,
+        "F16": 537.6,
+        "F32": 0.0,
+        "U8": 4.3
+      },
+      "storage_size_mb": {
+        "caveats": [],
+        "confidence": "high",
+        "estimation_method": "stat_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 7343.0
+      },
+      "tensor_count": 1903,
+      "used_by": [
+        "music-ace-step"
+      ]
+    },
+    {
+      "architecture": "stable-diffusion-xl-v1-base",
+      "architecture_source": "safetensors_metadata",
+      "container": "safetensors",
+      "estimated_loaded_weights_mb": {
+        "caveats": [],
+        "confidence": "medium",
+        "estimation_method": "safetensors_dtype_sum",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "safetensors_header",
+        "unit": "MB",
+        "value": 6616.3
+      },
+      "estimated_runtime_peak_mb": {
+        "caveats": [
+          "runtime peak is a property of the workflow, not of a single file"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "requires_a_per_workflow_measurement",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "file": "animagine-xl-4.0.safetensors",
+      "file_mtime": "2026-10-25T23:19:31+00:00",
+      "folder": "checkpoints",
+      "model_id": "checkpoints/animagine-xl-4.0.safetensors",
+      "quantization": null,
+      "quantization_source": "",
+      "sha256": "1d5b43ff75b6ab598502d4c779d2fbfa3dceca51c60c3b609640a60772333916",
+      "sha256_source": "studio/registry/models_catalog.json",
+      "storage_dtypes": {
+        "F16": 6616.3
+      },
+      "storage_size_mb": {
+        "caveats": [],
+        "confidence": "high",
+        "estimation_method": "stat_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 6617.0
+      },
+      "tensor_count": 2514,
+      "used_by": [
+        "character-ipadapter",
+        "img2img-anime",
+        "img2img-restyle",
+        "img2img-turbo",
+        "style-anime",
+        "txt2img-animagine",
+        "txt2img-upscale"
+      ]
+    },
+    {
+      "architecture": "stable-diffusion-xl-turbo-v1",
+      "architecture_source": "safetensors_metadata",
+      "container": "safetensors",
+      "estimated_loaded_weights_mb": {
+        "caveats": [],
+        "confidence": "medium",
+        "estimation_method": "safetensors_dtype_sum",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "safetensors_header",
+        "unit": "MB",
+        "value": 6616.3
+      },
+      "estimated_runtime_peak_mb": {
+        "caveats": [
+          "runtime peak is a property of the workflow, not of a single file"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "requires_a_per_workflow_measurement",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "file": "sd_xl_turbo_1.0_fp16.safetensors",
+      "file_mtime": "2026-10-25T22:57:46+00:00",
+      "folder": "checkpoints",
+      "model_id": "checkpoints/sd_xl_turbo_1.0_fp16.safetensors",
+      "quantization": "fp16",
+      "quantization_source": "filename_pattern",
+      "sha256": "e869ac7d6942cb327d68d5ed83a40447aadf20e0c3358d98b2cc9e270db0da26",
+      "sha256_source": "studio/registry/models_catalog.json",
+      "storage_dtypes": {
+        "F16": 6616.3
+      },
+      "storage_size_mb": {
+        "caveats": [],
+        "confidence": "high",
+        "estimation_method": "stat_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 6616.7
+      },
+      "tensor_count": 2515,
+      "used_by": [
+        "cn-canny-sdxl",
+        "cn-depth-sdxl",
+        "cn-dual-canny-depth",
+        "cn-triple-lock",
+        "format-cinema",
+        "format-landscape",
+        "format-portrait",
+        "format-square",
+        "format-story",
+        "img-batch-4",
+        "img-hires-fix",
+        "img2img-soft",
+        "img2img-strong",
+        "inpaint-remove",
+        "inpaint-turbo",
+        "outpaint-turbo",
+        "sam-bg-replace",
+        "sam-object-remove",
+        "sam-region-restyle",
+        "style-3d",
+        "style-cinematic",
+        "style-photo",
+        "style-product",
+        "style-sketch",
+        "txt2img-turbo"
+      ]
+    },
+    {
+      "architecture": null,
+      "architecture_source": "",
+      "container": "safetensors",
+      "estimated_loaded_weights_mb": {
+        "caveats": [
+          "mixed precision file; the loader decides the runtime dtype"
+        ],
+        "confidence": "medium",
+        "estimation_method": "safetensors_dtype_sum",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "safetensors_header",
+        "unit": "MB",
+        "value": 2411.2
+      },
+      "estimated_runtime_peak_mb": {
+        "caveats": [
+          "runtime peak is a property of the workflow, not of a single file"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "requires_a_per_workflow_measurement",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "file": "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors",
+      "file_mtime": "2026-10-26T12:18:21+00:00",
+      "folder": "clip_vision",
+      "model_id": "clip_vision/CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors",
+      "quantization": null,
+      "quantization_source": "",
+      "sha256": "6ca9667da1ca9e0b0f75e46bb030f7e011f44f86cbfb8d5a36590fcd7507b030",
+      "sha256_source": "studio/registry/models_catalog.json",
+      "storage_dtypes": {
+        "F32": 2411.2,
+        "I64": 0.0
+      },
+      "storage_size_mb": {
+        "caveats": [],
+        "confidence": "high",
+        "estimation_method": "stat_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 2411.2
+      },
+      "tensor_count": 521,
+      "used_by": [
+        "character-ipadapter",
+        "video-i2v-wan22"
+      ]
+    },
+    {
+      "architecture": null,
+      "architecture_source": "",
+      "container": "safetensors",
+      "estimated_loaded_weights_mb": {
+        "caveats": [],
+        "confidence": "medium",
+        "estimation_method": "safetensors_dtype_sum",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "safetensors_header",
+        "unit": "MB",
+        "value": 2386.1
+      },
+      "estimated_runtime_peak_mb": {
+        "caveats": [
+          "runtime peak is a property of the workflow, not of a single file"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "requires_a_per_workflow_measurement",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "file": "controlnet-canny-sdxl-1.0.safetensors",
+      "file_mtime": "2026-10-26T19:49:07+00:00",
+      "folder": "controlnet",
+      "model_id": "controlnet/controlnet-canny-sdxl-1.0.safetensors",
+      "quantization": null,
+      "quantization_source": "",
+      "sha256": "bf47cd757ceaf2572c53321329ef819ea38c09a6e3783588387913cd94dff47c",
+      "sha256_source": "studio/registry/models_catalog.json",
+      "storage_dtypes": {
+        "F16": 2386.1
+      },
+      "storage_size_mb": {
+        "caveats": [],
+        "confidence": "high",
+        "estimation_method": "stat_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 2386.2
+      },
+      "tensor_count": 844,
+      "used_by": [
+        "cn-canny-sdxl",
+        "cn-dual-canny-depth",
+        "cn-triple-lock"
+      ]
+    },
+    {
+      "architecture": null,
+      "architecture_source": "",
+      "container": "safetensors",
+      "estimated_loaded_weights_mb": {
+        "caveats": [],
+        "confidence": "medium",
+        "estimation_method": "safetensors_dtype_sum",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "safetensors_header",
+        "unit": "MB",
+        "value": 2386.1
+      },
+      "estimated_runtime_peak_mb": {
+        "caveats": [
+          "runtime peak is a property of the workflow, not of a single file"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "requires_a_per_workflow_measurement",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "file": "controlnet-depth-sdxl-1.0.safetensors",
+      "file_mtime": "2026-10-26T20:52:56+00:00",
+      "folder": "controlnet",
+      "model_id": "controlnet/controlnet-depth-sdxl-1.0.safetensors",
+      "quantization": null,
+      "quantization_source": "",
+      "sha256": "ea3770af4c33ea8ba8dccc0106ec5d5c5c6e504eb382119a3ccac3c9d973d344",
+      "sha256_source": "studio/registry/models_catalog.json",
+      "storage_dtypes": {
+        "F16": 2386.1
+      },
+      "storage_size_mb": {
+        "caveats": [],
+        "confidence": "high",
+        "estimation_method": "stat_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 2386.2
+      },
+      "tensor_count": 844,
+      "used_by": [
+        "cn-depth-sdxl",
+        "cn-dual-canny-depth"
+      ]
+    },
+    {
+      "architecture": null,
+      "architecture_source": "",
+      "container": "safetensors",
+      "estimated_loaded_weights_mb": {
+        "caveats": [],
+        "confidence": "medium",
+        "estimation_method": "safetensors_dtype_sum",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "safetensors_header",
+        "unit": "MB",
+        "value": 9536.3
+      },
+      "estimated_runtime_peak_mb": {
+        "caveats": [
+          "runtime peak is a property of the workflow, not of a single file"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "requires_a_per_workflow_measurement",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "file": "wan2.2_ti2v_5B_fp16.safetensors",
+      "file_mtime": "2026-10-25T23:49:15+00:00",
+      "folder": "diffusion_models",
+      "model_id": "diffusion_models/wan2.2_ti2v_5B_fp16.safetensors",
+      "quantization": "fp16",
+      "quantization_source": "filename_pattern",
+      "sha256": "456f901338bd9eadbded3828b819109a9b68e8a525ca5cf8d0049a69fcfeca1e",
+      "sha256_source": "studio/registry/models_catalog.json",
+      "storage_dtypes": {
+        "F16": 9536.3
+      },
+      "storage_size_mb": {
+        "caveats": [],
+        "confidence": "high",
+        "estimation_method": "stat_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 9536.4
+      },
+      "tensor_count": 825,
+      "used_by": [
+        "video-i2v-wan22",
+        "video-t2v-wan22"
+      ]
+    },
+    {
+      "architecture": null,
+      "architecture_source": "",
+      "container": "safetensors",
+      "estimated_loaded_weights_mb": {
+        "caveats": [],
+        "confidence": "medium",
+        "estimation_method": "safetensors_dtype_sum",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "safetensors_header",
+        "unit": "MB",
+        "value": 808.2
+      },
+      "estimated_runtime_peak_mb": {
+        "caveats": [
+          "runtime peak is a property of the workflow, not of a single file"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "requires_a_per_workflow_measurement",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "file": "ip-adapter-plus_sdxl_vit-h.safetensors",
+      "file_mtime": "2026-10-26T11:59:39+00:00",
+      "folder": "ipadapter",
+      "model_id": "ipadapter/ip-adapter-plus_sdxl_vit-h.safetensors",
+      "quantization": null,
+      "quantization_source": "",
+      "sha256": "3f5062b8400c94b7159665b21ba5c62acdcd7682262743d7f2aefedef00e6581",
+      "sha256_source": "studio/registry/models_catalog.json",
+      "storage_dtypes": {
+        "F16": 808.2
+      },
+      "storage_size_mb": {
+        "caveats": [],
+        "confidence": "high",
+        "estimation_method": "stat_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 808.3
+      },
+      "tensor_count": 191,
+      "used_by": [
+        "character-ipadapter"
+      ]
+    },
+    {
+      "architecture": null,
+      "architecture_source": "",
+      "container": "safetensors",
+      "estimated_loaded_weights_mb": {
+        "caveats": [
+          "fp8 tensors may be upcast to bf16 at load time: up to 2.0x the stored size",
+          "mixed precision file; the loader decides the runtime dtype"
+        ],
+        "confidence": "low",
+        "estimation_method": "safetensors_dtype_sum_fp8_may_upcast",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "safetensors_header",
+        "unit": "MB",
+        "value": 6423.8
+      },
+      "estimated_runtime_peak_mb": {
+        "caveats": [
+          "runtime peak is a property of the workflow, not of a single file"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "requires_a_per_workflow_measurement",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "file": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "file_mtime": "2026-10-25T23:32:56+00:00",
+      "folder": "text_encoders",
+      "model_id": "text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "quantization": "fp8",
+      "quantization_source": "filename_pattern",
+      "sha256": "c3355d30191f1f066b26d93fba017ae9809dce6c627dda5f6a66eaa651204f68",
+      "sha256_source": "studio/registry/models_catalog.json",
+      "storage_dtypes": {
+        "F16": 2003.5,
+        "F32": 0.0,
+        "F8_E4M3": 4416.0,
+        "U8": 4.3
+      },
+      "storage_size_mb": {
+        "caveats": [],
+        "confidence": "high",
+        "estimation_method": "stat_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 6423.9
+      },
+      "tensor_count": 412,
+      "used_by": [
+        "video-i2v-wan22",
+        "video-t2v-wan22"
+      ]
+    },
+    {
+      "architecture": null,
+      "architecture_source": "",
+      "container": "torch_pickle",
+      "estimated_loaded_weights_mb": {
+        "caveats": [],
+        "confidence": "insufficient_data",
+        "estimation_method": "container_not_parsed",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "estimated_runtime_peak_mb": {
+        "caveats": [
+          "runtime peak is a property of the workflow, not of a single file"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "requires_a_per_workflow_measurement",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "file": "RealESRGAN_x4.pth",
+      "file_mtime": "2026-10-25T23:19:42+00:00",
+      "folder": "upscale_models",
+      "model_id": "upscale_models/RealESRGAN_x4.pth",
+      "quantization": null,
+      "quantization_source": "",
+      "sha256": "aa00f09ad753d88576b21ed977e97d634976377031b178acc3b5b238df463400",
+      "sha256_source": "studio/registry/models_catalog.json",
+      "storage_dtypes": {},
+      "storage_size_mb": {
+        "caveats": [],
+        "confidence": "high",
+        "estimation_method": "stat_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 63.9
+      },
+      "tensor_count": null,
+      "used_by": [
+        "img-detail-2x",
+        "img-detail-3x",
+        "txt2img-upscale",
+        "upscale-realesrgan"
+      ]
+    },
+    {
+      "architecture": null,
+      "architecture_source": "",
+      "container": "torch_pickle",
+      "estimated_loaded_weights_mb": {
+        "caveats": [],
+        "confidence": "insufficient_data",
+        "estimation_method": "container_not_parsed",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "estimated_runtime_peak_mb": {
+        "caveats": [
+          "runtime peak is a property of the workflow, not of a single file"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "requires_a_per_workflow_measurement",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "file": "real_esrgan_x4plus.pth",
+      "file_mtime": "2026-10-26T22:19:42+00:00",
+      "folder": "upscale_models",
+      "model_id": "upscale_models/real_esrgan_x4plus.pth",
+      "quantization": null,
+      "quantization_source": "",
+      "sha256": "4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1",
+      "sha256_source": "studio/registry/models_catalog.json",
+      "storage_dtypes": {},
+      "storage_size_mb": {
+        "caveats": [],
+        "confidence": "high",
+        "estimation_method": "stat_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 63.9
+      },
+      "tensor_count": null,
+      "used_by": [
+        "img-detail-2x-x4plus",
+        "img-detail-3x-x4plus",
+        "upscale-x4plus"
+      ]
+    },
+    {
+      "architecture": null,
+      "architecture_source": "",
+      "container": "safetensors",
+      "estimated_loaded_weights_mb": {
+        "caveats": [],
+        "confidence": "medium",
+        "estimation_method": "safetensors_dtype_sum",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "safetensors_header",
+        "unit": "MB",
+        "value": 1344.1
+      },
+      "estimated_runtime_peak_mb": {
+        "caveats": [
+          "runtime peak is a property of the workflow, not of a single file"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "requires_a_per_workflow_measurement",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "file": "wan2.2_vae.safetensors",
+      "file_mtime": "2026-10-25T23:22:03+00:00",
+      "folder": "vae",
+      "model_id": "vae/wan2.2_vae.safetensors",
+      "quantization": null,
+      "quantization_source": "",
+      "sha256": "e40321bd36b9709991dae2530eb4ac303dd168276980d3e9bc4b6e2b75fed156",
+      "sha256_source": "studio/registry/models_catalog.json",
+      "storage_dtypes": {
+        "F16": 1344.1
+      },
+      "storage_size_mb": {
+        "caveats": [],
+        "confidence": "high",
+        "estimation_method": "stat_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 1344.1
+      },
+      "tensor_count": 196,
+      "used_by": [
+        "video-i2v-wan22",
+        "video-t2v-wan22"
+      ]
+    },
+    {
+      "architecture": null,
+      "architecture_source": "",
+      "container": "onnx",
+      "estimated_loaded_weights_mb": {
+        "caveats": [
+          "ONNX Runtime arena overhead is only observable at runtime"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "onnx_runtime_arena_not_measurable_without_a_run",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "estimated_runtime_peak_mb": {
+        "caveats": [
+          "runtime peak is a property of the workflow, not of a single file"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "requires_a_per_workflow_measurement",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "file": "depth-anything-v2-small.onnx",
+      "file_mtime": "2026-10-26T20:53:07+00:00",
+      "folder": "vision-models",
+      "model_id": "vision-models/depth-anything-v2-small.onnx",
+      "quantization": null,
+      "quantization_source": "",
+      "sha256": null,
+      "sha256_source": "",
+      "storage_dtypes": {},
+      "storage_size_mb": {
+        "caveats": [],
+        "confidence": "high",
+        "estimation_method": "stat_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 94.5
+      },
+      "tensor_count": null,
+      "used_by": []
+    },
+    {
+      "architecture": null,
+      "architecture_source": "",
+      "container": "onnx",
+      "estimated_loaded_weights_mb": {
+        "caveats": [
+          "ONNX Runtime arena overhead is only observable at runtime"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "onnx_runtime_arena_not_measurable_without_a_run",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "estimated_runtime_peak_mb": {
+        "caveats": [
+          "runtime peak is a property of the workflow, not of a single file"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "requires_a_per_workflow_measurement",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "file": "mobile_sam.onnx",
+      "file_mtime": "2026-10-26T22:19:32+00:00",
+      "folder": "vision-models",
+      "model_id": "vision-models/mobile_sam.onnx",
+      "quantization": null,
+      "quantization_source": "",
+      "sha256": null,
+      "sha256_source": "",
+      "storage_dtypes": {},
+      "storage_size_mb": {
+        "caveats": [],
+        "confidence": "high",
+        "estimation_method": "stat_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 15.7
+      },
+      "tensor_count": null,
+      "used_by": []
+    },
+    {
+      "architecture": null,
+      "architecture_source": "",
+      "container": "onnx",
+      "estimated_loaded_weights_mb": {
+        "caveats": [
+          "ONNX Runtime arena overhead is only observable at runtime"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "onnx_runtime_arena_not_measurable_without_a_run",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "estimated_runtime_peak_mb": {
+        "caveats": [
+          "runtime peak is a property of the workflow, not of a single file"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "requires_a_per_workflow_measurement",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "file": "mobilesam.decoder.onnx",
+      "file_mtime": "2026-10-26T22:28:31+00:00",
+      "folder": "vision-models",
+      "model_id": "vision-models/mobilesam.decoder.onnx",
+      "quantization": null,
+      "quantization_source": "",
+      "sha256": "b0735abf07c7affddf20fffc3ce750f44af387ee6a7323880e909389ed15d279",
+      "sha256_source": "studio/registry/models_catalog.json",
+      "storage_dtypes": {},
+      "storage_size_mb": {
+        "caveats": [],
+        "confidence": "high",
+        "estimation_method": "stat_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 15.7
+      },
+      "tensor_count": null,
+      "used_by": []
+    },
+    {
+      "architecture": null,
+      "architecture_source": "",
+      "container": "onnx",
+      "estimated_loaded_weights_mb": {
+        "caveats": [
+          "ONNX Runtime arena overhead is only observable at runtime"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "onnx_runtime_arena_not_measurable_without_a_run",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "estimated_runtime_peak_mb": {
+        "caveats": [
+          "runtime peak is a property of the workflow, not of a single file"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "requires_a_per_workflow_measurement",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "file": "mobilesam.encoder.onnx",
+      "file_mtime": "2026-10-26T22:28:25+00:00",
+      "folder": "vision-models",
+      "model_id": "vision-models/mobilesam.encoder.onnx",
+      "quantization": null,
+      "quantization_source": "",
+      "sha256": "4125037c5e24d6ea58e201b20e8d8fbbbd1135c0b881e34a8074b8c4f07e6918",
+      "sha256_source": "studio/registry/models_catalog.json",
+      "storage_dtypes": {},
+      "storage_size_mb": {
+        "caveats": [],
+        "confidence": "high",
+        "estimation_method": "stat_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 26.9
+      },
+      "tensor_count": null,
+      "used_by": []
+    },
+    {
+      "architecture": null,
+      "architecture_source": "",
+      "container": "onnx",
+      "estimated_loaded_weights_mb": {
+        "caveats": [
+          "ONNX Runtime arena overhead is only observable at runtime"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "onnx_runtime_arena_not_measurable_without_a_run",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "estimated_runtime_peak_mb": {
+        "caveats": [
+          "runtime peak is a property of the workflow, not of a single file"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "requires_a_per_workflow_measurement",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "file": "sam-vit-base-decoder.onnx",
+      "file_mtime": "2026-10-27T10:57:02+00:00",
+      "folder": "vision-models",
+      "model_id": "vision-models/sam-vit-base-decoder.onnx",
+      "quantization": null,
+      "quantization_source": "",
+      "sha256": "f4514391764fbd56e08e119060d874ecd7d52994bfb1968af159e12d4943b5bb",
+      "sha256_source": "studio/registry/models_catalog.json",
+      "storage_dtypes": {},
+      "storage_size_mb": {
+        "caveats": [],
+        "confidence": "high",
+        "estimation_method": "stat_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 15.8
+      },
+      "tensor_count": null,
+      "used_by": []
+    },
+    {
+      "architecture": null,
+      "architecture_source": "",
+      "container": "onnx",
+      "estimated_loaded_weights_mb": {
+        "caveats": [
+          "ONNX Runtime arena overhead is only observable at runtime"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "onnx_runtime_arena_not_measurable_without_a_run",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "estimated_runtime_peak_mb": {
+        "caveats": [
+          "runtime peak is a property of the workflow, not of a single file"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "requires_a_per_workflow_measurement",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "file": "sam-vit-base-encoder.onnx",
+      "file_mtime": "2026-10-27T11:14:13+00:00",
+      "folder": "vision-models",
+      "model_id": "vision-models/sam-vit-base-encoder.onnx",
+      "quantization": null,
+      "quantization_source": "",
+      "sha256": "238f9a4496b1cfe2a9d6961f3c37c2ce32d89601d4ab95edd0d27f410f682ae5",
+      "sha256_source": "studio/registry/models_catalog.json",
+      "storage_dtypes": {},
+      "storage_size_mb": {
+        "caveats": [],
+        "confidence": "high",
+        "estimation_method": "stat_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 342.7
+      },
+      "tensor_count": null,
+      "used_by": []
+    },
+    {
+      "architecture": null,
+      "architecture_source": "",
+      "container": "onnx",
+      "estimated_loaded_weights_mb": {
+        "caveats": [
+          "ONNX Runtime arena overhead is only observable at runtime"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "onnx_runtime_arena_not_measurable_without_a_run",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "estimated_runtime_peak_mb": {
+        "caveats": [
+          "runtime peak is a property of the workflow, not of a single file"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "requires_a_per_workflow_measurement",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "file": "u2net.onnx",
+      "file_mtime": "2026-10-26T20:53:24+00:00",
+      "folder": "vision-models",
+      "model_id": "vision-models/u2net.onnx",
+      "quantization": null,
+      "quantization_source": "",
+      "sha256": null,
+      "sha256_source": "",
+      "storage_dtypes": {},
+      "storage_size_mb": {
+        "caveats": [],
+        "confidence": "high",
+        "estimation_method": "stat_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 167.8
+      },
+      "tensor_count": null,
+      "used_by": []
+    },
+    {
+      "architecture": null,
+      "architecture_source": "",
+      "container": "gguf",
+      "estimated_loaded_weights_mb": {
+        "caveats": [
+          "quantised container is assumed to stay resident at file size"
+        ],
+        "confidence": "low",
+        "estimation_method": "assumed_equal_to_file_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 867.6
+      },
+      "estimated_runtime_peak_mb": {
+        "caveats": [
+          "runtime peak is a property of the workflow, not of a single file"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "requires_a_per_workflow_measurement",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "file": "moondream2-mmproj-f16-20250414.gguf",
+      "file_mtime": "2026-10-27T11:14:51+00:00",
+      "folder": "vlm-models",
+      "model_id": "vlm-models/moondream2-mmproj-f16-20250414.gguf",
+      "quantization": "f16",
+      "quantization_source": "filename_pattern",
+      "sha256": "4cc1cb3660d87ff56432ebeb7884ad35d67c48c7b9f6b2856f305e39c38eed8f",
+      "sha256_source": "studio/registry/models_catalog.json",
+      "storage_dtypes": {},
+      "storage_size_mb": {
+        "caveats": [],
+        "confidence": "high",
+        "estimation_method": "stat_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 867.6
+      },
+      "tensor_count": 457,
+      "used_by": []
+    },
+    {
+      "architecture": null,
+      "architecture_source": "",
+      "container": "gguf",
+      "estimated_loaded_weights_mb": {
+        "caveats": [
+          "quantised container is assumed to stay resident at file size"
+        ],
+        "confidence": "low",
+        "estimation_method": "assumed_equal_to_file_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 2708.0
+      },
+      "estimated_runtime_peak_mb": {
+        "caveats": [
+          "runtime peak is a property of the workflow, not of a single file"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "requires_a_per_workflow_measurement",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "file": "moondream2-text-model-f16_ct-vicuna.gguf",
+      "file_mtime": "2026-10-27T11:19:07+00:00",
+      "folder": "vlm-models",
+      "model_id": "vlm-models/moondream2-text-model-f16_ct-vicuna.gguf",
+      "quantization": "f16",
+      "quantization_source": "filename_pattern",
+      "sha256": "925bcb666baf69ed747e26121af287b16ae7764483be9548b1382f29783689a5",
+      "sha256_source": "studio/registry/models_catalog.json",
+      "storage_dtypes": {},
+      "storage_size_mb": {
+        "caveats": [],
+        "confidence": "high",
+        "estimation_method": "stat_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 2708.0
+      },
+      "tensor_count": 245,
+      "used_by": []
+    },
+    {
+      "architecture": null,
+      "architecture_source": "",
+      "container": "ggml",
+      "estimated_loaded_weights_mb": {
+        "caveats": [
+          "quantised container is assumed to stay resident at file size"
+        ],
+        "confidence": "low",
+        "estimation_method": "assumed_equal_to_file_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 1031.1
+      },
+      "estimated_runtime_peak_mb": {
+        "caveats": [
+          "runtime peak is a property of the workflow, not of a single file"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "requires_a_per_workflow_measurement",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "file": "ggml-large-v3-q5_0.bin",
+      "file_mtime": "2026-10-26T22:25:34+00:00",
+      "folder": "whisper-models",
+      "model_id": "whisper-models/ggml-large-v3-q5_0.bin",
+      "quantization": "q5_0",
+      "quantization_source": "filename_pattern",
+      "sha256": "d75795ecff3f83b5faa89d1900604ad8c780abd5739fae406de19f23ecd98ad1",
+      "sha256_source": "studio/registry/models_catalog.json",
+      "storage_dtypes": {},
+      "storage_size_mb": {
+        "caveats": [],
+        "confidence": "high",
+        "estimation_method": "stat_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 1031.1
+      },
+      "tensor_count": null,
+      "used_by": [
+        "asr-large",
+        "asr-translate-en"
+      ]
+    },
+    {
+      "architecture": null,
+      "architecture_source": "",
+      "container": "ggml",
+      "estimated_loaded_weights_mb": {
+        "caveats": [
+          "quantised container is assumed to stay resident at file size"
+        ],
+        "confidence": "low",
+        "estimation_method": "assumed_equal_to_file_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 465.0
+      },
+      "estimated_runtime_peak_mb": {
+        "caveats": [
+          "runtime peak is a property of the workflow, not of a single file"
+        ],
+        "confidence": "insufficient_data",
+        "estimation_method": "requires_a_per_workflow_measurement",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "",
+        "unit": "MB",
+        "value": null
+      },
+      "file": "ggml-small.bin",
+      "file_mtime": "2026-10-26T20:00:10+00:00",
+      "folder": "whisper-models",
+      "model_id": "whisper-models/ggml-small.bin",
+      "quantization": null,
+      "quantization_source": "",
+      "sha256": null,
+      "sha256_source": "",
+      "storage_dtypes": {},
+      "storage_size_mb": {
+        "caveats": [],
+        "confidence": "high",
+        "estimation_method": "stat_size",
+        "last_verified": "2026-11-01T09:41:06+00:00",
+        "source": "filesystem",
+        "unit": "MB",
+        "value": 465.0
+      },
+      "tensor_count": null,
+      "used_by": []
+    }
+  ],
+  "parser_version": "1",
+  "roots": {
+    "host": "studio/tools",
+    "models": "models"
+  },
+  "source_of_truth": "filesystem sizes and file headers; this file is a derived cache"
+}
