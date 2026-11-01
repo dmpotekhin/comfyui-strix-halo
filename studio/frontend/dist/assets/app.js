@@ -2,7 +2,7 @@
 // Views render into #view; state lives in this module. Hash routing keeps deep links working
 // (#/run/txt2img-turbo) so a workflow can be bookmarked.
 
-import { api, ApiError, auth, UNAUTHORIZED } from './api.js';
+import { api, ApiError, auth, UNAUTHORIZED, randomId } from './api.js';
 
 const view = document.getElementById('view');
 const nav = document.getElementById('nav');
@@ -480,7 +480,9 @@ async function viewRun(id) {
     btn.disabled = true;
     btn.textContent = 'Submitting…';
     try {
-      const res = await api.submit(wf.id, collectParams(form), crypto.randomUUID());
+      // randomId(), not the native generator: the studio runs over plain http on the LAN,
+      // where crypto.randomUUID does not exist. See api.js.
+      const res = await api.submit(wf.id, collectParams(form), randomId());
       if (res.warnings?.length) {
         errBox.innerHTML = res.warnings.map((w) => `<div class="alert warn">${esc(w)}</div>`).join('');
       }

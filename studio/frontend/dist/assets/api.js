@@ -91,6 +91,33 @@ export const auth = {
     post('/api/auth/password', { current_password, new_password }),
 };
 
+/**
+ * A client token, without assuming a secure context.
+ *
+ * crypto.randomUUID() exists only in a secure context — HTTPS, or localhost. The studio is
+ * served over plain http:// on the home LAN, so in every family browser the method is
+ * undefined and the submit path threw "crypto.randomUUID is not a function" before the request
+ * was ever sent: the run button appeared dead, the job was never created.
+ *
+ * crypto.getRandomValues() has no such restriction, so the fallback assembles an RFC 4122
+ * version 4 UUID by hand: sixteen random bytes, version nibble 4, variant bits 10.
+ *
+ * There is deliberately no Math.random() branch. These tokens are idempotency keys compared
+ * across accounts, so a weak source would let one household member collide with another's
+ * retry, and a guessable token is a cheap way to probe the job table.
+ */
+export function randomId(cryptoRef = globalThis.crypto) {
+  if (cryptoRef && typeof cryptoRef.randomUUID === 'function') return cryptoRef.randomUUID();
+  if (cryptoRef && typeof cryptoRef.getRandomValues === 'function') {
+    const bytes = cryptoRef.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+  throw new Error('cannot generate a client token: this browser has no Web Crypto');
+}
+
 export const api = {
   auth,
   health: () => get('/api/health'),

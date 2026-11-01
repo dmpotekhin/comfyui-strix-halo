@@ -218,6 +218,38 @@ service workers, `SharedArrayBuffer` and friends remain unavailable over plain H
 ever grows a dependency on one of those, the answer is HTTPS (§6) — not another polyfill. The
 day the door moves to HTTPS, delete the `replace` block; nothing else depends on it.
 
+### The same trap inside the studio's own UI
+
+The Caddy polyfill only reaches ComfyUI's HTML. The studio's own single-page app is served by the
+studio backend on `http://192.168.31.60:8000` and never passes through Caddy, so it inherited the
+same plain-HTTP hole: the run view built its idempotency token with `crypto.randomUUID()` and
+threw `TypeError: crypto.randomUUID is not a function` in every family browser. Clicking **Run**
+did nothing — no request left the page, no entry appeared in any server log, and the form looked
+merely unresponsive. Measured in the same way as above (`isSecureContext: false`,
+`typeof crypto.randomUUID === "undefined"`).
+
+The fix lives in the asset, not in a proxy: `randomId()` in `studio/frontend/dist/assets/api.js`
+returns `crypto.randomUUID()` when the browser has it and otherwise assembles an RFC 4122 version
+4 UUID — sixteen bytes from `crypto.getRandomValues()`, version nibble 4, variant bits 10.
+`crypto.getRandomValues()` carries no secure-context requirement, so this works over plain HTTP.
+There is deliberately **no `Math.random()` branch**: these tokens are idempotency keys compared
+across accounts, so a weak source would let one household member collide with another's retry and
+a guessable token would be a cheap way to probe the job table. With no Web Crypto at all the
+helper throws instead of inventing a number.
+
+Unlike the Caddy block this is not a monkey-patch of `window.crypto` — it is a function the app
+calls, so it does not depend on `crypto.randomUUID` being writable, and the Caddy injection stays
+only for ComfyUI's UI, which we do not own. Two guards keep it from regressing: `app.js` must not
+call the native method directly (`backend/tests/test_frontend_uuid.py` strips comments before
+matching, so a comment about the fix cannot satisfy a guard about the fix), and
+`studio/frontend/tests/uuid.test.mjs` exercises both crypto flavours on node's test runner,
+including a full `api.submit()` with `fetch` stubbed.
+
+Verified in a real Chromium over the LAN as a `user` account: login, library (127 workflows),
+selecting `txt2img-turbo`, then Run — zero page errors, one `POST /api/jobs` carrying a valid v4
+`client_token`, and the job created for that account. Against the unfixed bundle the same click
+produced the `TypeError` and no request.
+
 ## 6. Adding HTTPS later (optional)
 
 Worth doing if the password ever needs to cross an untrusted network, or just to stop the
@@ -275,6 +307,7 @@ upstream `127.0.0.1:8188` too — they are ComfyUI's own, not the proxy's.
 | Everything stopped after a reboot | `systemctl --user status comfyui-caddy`, `loginctl show-user dmitry \| grep Linger`, `journalctl --user -u comfyui-caddy -n 50` |
 | It worked for me but not on her laptop | That device is probably still showing the page it cached before the fix. The index document deliberately carries no validators now, so a normal reload (F5) must fetch fresh HTML — if it still fails, check `document.documentElement.innerHTML.includes('comfyui-lan-uuid-polyfill')` in the console, then `Ctrl+Shift+R` |
 | Who tried to get in? | `grep 401 ~/.local/share/comfyui-caddy/access.log` |
+| Studio: clicking Run does nothing, console: `crypto.randomUUID is not a function` | The browser is running a cached pre-fix bundle (`/assets/app.js`). Hard reload (`Ctrl+Shift+R`), then check `typeof crypto.randomUUID` is `"undefined"` and that the submit still works — the studio generates tokens itself through `randomId()`, so no proxy is involved. If it still throws, the served `assets/api.js` is older than the repo: compare `curl -s http://192.168.31.60:8000/assets/api.js | grep -c randomId` (expect ≥1) |
 | UI paints but nothing works; console: `crypto.randomUUID is not a function` | The polyfill block is missing or not reaching the browser. `grep -c comfyui-lan-uuid-polyfill ~/.config/comfyui-caddy/Caddyfile` (expect ≥1), then `grep -c 'header_up Accept-Encoding identity' ...` (expect 1 — without it `encode` hides the HTML from `replace`), then `python3 deploy/caddy/lan_access.py render` and reload the page hard |
 | `unrecognized directive: replace` on reload | The running Caddy binary has no `replace-response` module. `~/.local/bin/caddy list-modules \| grep replace` — if empty, install the custom build (§3) and `systemctl --user restart comfyui-caddy`; a hot reload cannot add a module to a running process |
 | `caddy: cannot execute binary file` / segmentation fault right after `caddy add-package` | `add-package` left a **truncated** binary (8.6 MB instead of ~50 MB): it renames the working one to `caddy.tmp` and downloads the replacement, and an interrupted download leaves the door one restart away from dead. Restore: `cp ~/.local/bin/caddy.v2.10.2-known-good ~/.local/bin/caddy` or re-download the build with the plugin, then `systemctl --user restart comfyui-caddy`. Check with `~/.local/bin/caddy version` before restarting |
