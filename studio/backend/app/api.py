@@ -1073,8 +1073,12 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
     async def update_settings(payload: dict[str, Any] = Body(...),
                               admin: Principal = Depends(require_admin)) -> dict[str, Any]:
         changed = {}
+        ignored = []
         for key, value in (payload or {}).items():
             if key not in EDITABLE_FIELDS:
+                # ``gpu_max_concurrent`` lands here on purpose: the GPU lane is a hard limit of one
+                # engine, so the request is refused with an event instead of silently raising it.
+                ignored.append(key)
                 continue
             if key == "comfy_url" and not str(value).startswith("http://127.0.0.1") \
                     and not str(value).startswith("http://localhost"):
@@ -1083,6 +1087,11 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
             setattr(state.settings, key, value)
             changed[key] = value
         save_settings(layout, state.settings)
+        for key in ignored:
+            if key == "gpu_max_concurrent":
+                state.db.log_event(level="warn", message=(
+                    "gpu_max_concurrent refused: the GPU lane is always 1 "
+                    "(one ComfyUI, one model in memory)"), user_id=admin.id)
         if "comfy_url" in changed:
             state.client.base_url = str(changed["comfy_url"]).rstrip("/")
             state.client.invalidate_object_info()

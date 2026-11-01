@@ -53,6 +53,19 @@ class Settings:
     poll_interval_s: float = 1.0      # history polling fallback when WS is unavailable
     progress_ws: bool = True          # use the ComfyUI websocket for progress
 
+    # --- Execution lanes -----------------------------------------------------------
+    # Two independent lanes behind one queue (docs/QUEUE_ARCHITECTURE.md). Host tools are CPU
+    # work: they never touch VRAM, so they must not wait behind a 27-minute render. Graph and
+    # chain workflows stay strictly serial — one ComfyUI, one model in memory.
+    cpu_host_workers: int = 2         # host-tool slots; 0 disables the pool (diagnostics mode)
+    gpu_max_concurrent: int = 1       # NOT editable: the engine is single-tenant by design
+    # Soft admission threshold for host jobs, read right before a slot is taken. It is not a
+    # guarantee of free memory — it is a brake that keeps a stalled machine from starting a
+    # third ffmpeg. An unreadable metric never becomes a fake number: the job is admitted and
+    # the row records that the check was unavailable.
+    cpu_host_min_available_mb: int = 1024
+    cpu_host_admission_poll_s: float = 5.0   # re-check a memory-blocked lane this often
+
     # --- Generation defaults -------------------------------------------------------
     default_negative_prompt: str = "blurry, low quality, watermark, text, jpeg artifacts"
 
@@ -93,6 +106,9 @@ _ENV_MAP = {
     "STUDIO_MAX_QUEUE_DEPTH": ("max_queue_depth", int),
     "STUDIO_MAX_USER_ACTIVE_JOBS": ("max_user_active_jobs", int),
     "STUDIO_PROGRESS_WS": ("progress_ws", lambda v: v.lower() not in ("0", "false", "no")),
+    "STUDIO_CPU_HOST_WORKERS": ("cpu_host_workers", int),
+    "STUDIO_CPU_HOST_MIN_AVAILABLE_MB": ("cpu_host_min_available_mb", int),
+    "STUDIO_CPU_HOST_ADMISSION_POLL_S": ("cpu_host_admission_poll_s", float),
     "STUDIO_MAX_UPLOAD_MB": ("max_upload_mb", int),
     "STUDIO_DOWNLOADS_ENABLED": ("downloads_enabled", lambda v: v.lower() not in ("0", "false", "no")),
     "STUDIO_MIN_FREE_DISK_GB": ("min_free_disk_gb", int),
@@ -121,8 +137,50 @@ def load_settings(layout: Layout) -> Settings:
     # Safety rails that must never be relaxed by a config file.
     if settings.require_download_approval is not True:
         settings.require_download_approval = True
+    notes = enforce_safety_rails(settings)
+    object.__setattr__(settings, "_rails", notes)
     object.__setattr__(settings, "_config_path", cfg_file)
     return settings
+
+
+# The GPU lane is single-tenant by design: one ComfyUI holds one model in unified memory, and a
+# second concurrent graph would swap it out mid-sampling. A config file may ask for more; it does
+# not get it, and the refusal is logged instead of silently honoured.
+MAX_HOST_WORKERS = 8
+
+
+def enforce_safety_rails(settings: Settings) -> list[str]:
+    """Clamp the lane settings to what the hardware can honour. Returns notes for the event log."""
+    notes: list[str] = []
+    try:
+        gpu = int(settings.gpu_max_concurrent)
+    except (TypeError, ValueError):
+        gpu = 1
+    if gpu != 1:
+        notes.append(f"gpu_max_concurrent={gpu} refused: the GPU lane is always 1 "
+                     f"(one ComfyUI, one model in memory)")
+        settings.gpu_max_concurrent = 1
+    try:
+        workers = int(settings.cpu_host_workers)
+    except (TypeError, ValueError):
+        workers = 2
+    if workers < 0:
+        notes.append(f"cpu_host_workers={workers} is not a count; using 0 (pool disabled)")
+        workers = 0
+    if workers > MAX_HOST_WORKERS:
+        notes.append(f"cpu_host_workers={workers} clamped to {MAX_HOST_WORKERS}: "
+                     f"an unbounded pool would starve the machine")
+        workers = MAX_HOST_WORKERS
+    settings.cpu_host_workers = workers
+    try:
+        settings.cpu_host_min_available_mb = max(0, int(settings.cpu_host_min_available_mb))
+    except (TypeError, ValueError):
+        settings.cpu_host_min_available_mb = 1024
+    try:
+        settings.cpu_host_admission_poll_s = max(0.5, float(settings.cpu_host_admission_poll_s))
+    except (TypeError, ValueError):
+        settings.cpu_host_admission_poll_s = 5.0
+    return notes
 
 
 def save_settings(layout: Layout, settings: Settings) -> Path:
@@ -145,6 +203,9 @@ EDITABLE_FIELDS = (
     "min_free_disk_gb",
     "keep_job_history",
     "poll_interval_s",
+    "cpu_host_workers",
+    "cpu_host_min_available_mb",
+    "cpu_host_admission_poll_s",
 )
 
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})

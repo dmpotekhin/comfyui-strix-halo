@@ -1,13 +1,15 @@
-"""Job orchestration: one coordinated queue in front of one ComfyUI backend.
+"""Job orchestration: one queue, one lifecycle, two execution lanes.
 
 Design constraints taken from the brief, and from what this machine actually is:
 
-* **One heavy worker.** Model swaps cost seconds and unified memory is shared, so jobs run
-  strictly one at a time by default (``settings.one_at_a_time``). Concurrency here would
-  trade throughput for timeouts, not faster results.
+* **Two lanes, one Job system.** Host tools (piper/ffmpeg/Pillow) are pure CPU work and run in a
+  small bounded pool; graph and chain workflows stay strictly serial in front of the single
+  ComfyUI, because model swaps cost seconds and unified memory is shared. A host job must never
+  wait behind a 27-minute render, and two graphs must never share the engine.
 * **Never spawn a second ComfyUI.** The queue submits to the already-running instance.
-* **No shell, no process management.** Cancellation goes through ``POST /interrupt``, never
-  a signal to a process we do not own.
+* **Cancel only what we own.** ComfyUI's ``/interrupt`` stops whatever graph is running, so it is
+  sent only by the job that holds the GPU lane; host jobs are stopped by signalling the process
+  group we started ourselves, never by touching the engine.
 * **Durable.** Every job is in SQLite before it is queued, so a browser refresh, a backend
   restart, or a crashed tab cannot lose it. Orphans are reconciled, not silently dropped.
 * **Idempotent.** A repeated ``client_token`` returns the original job instead of a duplicate.
@@ -17,8 +19,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import subprocess
+import threading
 import time
 import uuid
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -61,6 +65,28 @@ class QueueFull(Exception):
     pass
 
 
+LANE_GPU = "gpu"
+LANE_CPU = "cpu"
+
+
+def _mem_available_mb() -> int | None:
+    """MemAvailable in MiB, or None when the kernel does not expose it.
+
+    None is not zero and not "plenty": the caller records an unavailable check as such instead of
+    inventing a number (docs/QUEUE_ARCHITECTURE.md, "admission").
+    """
+    try:
+        with open("/proc/meminfo", encoding="ascii") as fh:
+            for line in fh:
+                if line.startswith("MemAvailable:"):
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        return int(parts[1]) // 1024
+    except (OSError, ValueError):
+        return None
+    return None
+
+
 class JobManager:
     def __init__(
         self,
@@ -71,6 +97,7 @@ class JobManager:
         layout_output: Path,
         settings: Any,
         telemetry: ExecutionTelemetry | None = None,
+        mem_available: Callable[[], int | None] | None = None,
     ) -> None:
         self.db = db
         self.registry = registry
@@ -78,12 +105,35 @@ class JobManager:
         self.output_root = layout_output
         self.settings = settings
 
-        self._queue: asyncio.Queue[str] = asyncio.Queue()
-        self._worker: asyncio.Task[None] | None = None
+        # Admission order. Deliberately *not* an asyncio.Queue: one queue cannot be drained by two
+        # lanes without head-of-line blocking — the 27-minute render at the head would hold the only
+        # slot a 2-second thumbnail needs. The dispatcher scans this deque from the left and hands
+        # each job to whichever lane has room, which keeps FIFO inside a lane and lets a host job
+        # start while a graph is still sampling.
+        self._order: deque[str] = deque()
+        self._wake = asyncio.Event()
+        self._dispatch_task: asyncio.Task[None] | None = None
+        self._lane_tasks: set[asyncio.Task[None]] = set()
+        # Exactly one job may hold the GPU lane. This field *is* the lock: every read and write of it
+        # happens inside the event loop with no await in between, which is what makes "interrupt
+        # only if we hold the lane" race-free (see cancel()).
+        self._gpu_holder: str | None = None
+        self._host_holders: dict[str, asyncio.Task[None] | None] = {}
+        self._host_peak = 0
+        self._gpu_peak = 0
+        # Cancellation, per lane. A host job is stopped by setting its event, which the tool's
+        # process supervisor polls; nobody sends /interrupt on its behalf.
+        self._host_stop: dict[str, threading.Event] = {}
+        self._cancel_reason: dict[str, str] = {}
+        # Why a job is not starting yet ("slot" or "memavailable"), for the telemetry row.
+        self._wait_reason: dict[str, str] = {}
+        self._wait_since: dict[str, float] = {}
+        self._wait_mem: dict[str, int | None] = {}
+        self._mem_available = mem_available if mem_available is not None else _mem_available_mb
+        self._mem_seen: int | None = None
         self._progress: dict[str, float] = {}
         self._stage: dict[str, str] = {}
         self._cancelled: set[str] = set()
-        self._running_job: str | None = None
         self._interrupt_requested: set[str] = set()
         self._ws_tasks: dict[str, asyncio.Task[None]] = {}
         self._client: ComfyClientProtocol | None = None
@@ -110,21 +160,245 @@ class JobManager:
 
     # -- lifecycle --------------------------------------------------------------------
     async def start(self) -> None:
-        if self._worker is None or self._worker.done():
-            self._worker = asyncio.create_task(self._worker_loop(), name="studio-job-worker")
+        for note in getattr(self.settings, "_rails", None) or []:
+            # A config that asked for two graphs at once or forty workers is refused out loud
+            # instead of being quietly honoured (config.enforce_safety_rails).
+            self.db.log_event(f"settings rail: {note}", level="warn")
+        if self._dispatch_task is None or self._dispatch_task.done():
+            self._dispatch_task = asyncio.create_task(self._dispatch_loop(),
+                                                      name="studio-job-dispatcher")
         await self.reconcile_orphans()
+        self._rehydrate_queue()
+        self._wake.set()
+
+    def _rehydrate_queue(self) -> int:
+        """Re-admit jobs a previous backend accepted and never ran.
+
+        Reconcile deliberately leaves ``queued`` rows alone; without this they would sit in SQLite
+        forever — the row looks healthy while the job is lost from the user's point of view.
+        """
+        readmitted = 0
+        try:
+            rows = self.db.list_jobs(limit=1000)
+        except Exception as e:  # noqa: BLE001 - a broken read must not stop the studio
+            log.warning("could not rehydrate the queue: %s", e)
+            return 0
+        for row in reversed(rows):            # list_jobs is newest-first; admission is FIFO
+            job_id = row.get("id")
+            if not job_id or row.get("status") != "queued" or job_id in self._order:
+                continue
+            self._order.append(job_id)
+            self._progress.setdefault(job_id, float(row.get("progress") or 0.0))
+            self._stage[job_id] = "queued"
+            # No monotonic mark: this process never saw the job start, so the telemetry row falls
+            # back to the stored timestamps and says so, instead of timing the restart.
+            readmitted += 1
+        if readmitted:
+            self.db.log_event(f"re-admitted {readmitted} queued job(s) after restart", level="info")
+        return readmitted
 
     async def stop(self) -> None:
         for task in list(self._ws_tasks.values()):
             task.cancel()
         self._ws_tasks.clear()
-        if self._worker is not None:
-            self._worker.cancel()
+        # 1. Stop admitting: nothing new may take a slot while we are tearing the lanes down.
+        if self._dispatch_task is not None:
+            self._dispatch_task.cancel()
             try:
-                await self._worker
+                await self._dispatch_task
             except (asyncio.CancelledError, Exception):  # noqa: BLE001
                 pass
-            self._worker = None
+            self._dispatch_task = None
+        # 2. Ask host tools to stop and let the graceful path run: the tool supervisor sends SIGTERM
+        #    to its process group, waits, then SIGKILLs. Cancelling the threads outright would leave
+        #    ffmpeg running with our pipes open.
+        for job_id in list(self._host_holders):
+            self._cancel_reason[job_id] = "shutdown"
+            event = self._host_stop.get(job_id)
+            if event is not None:
+                event.set()
+        deadline = time.monotonic() + 15.0
+        while self._host_holders and time.monotonic() < deadline:
+            await asyncio.sleep(0.05)
+        # 3. Whatever is left — a graph mid-sample, a wedged tool — dies as a task. Rows stay
+        #    "running" and reconcile_orphans() settles them honestly on the next start.
+        pending = list(self._lane_tasks)
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        self._lane_tasks.clear()
+        self._host_holders.clear()
+        self._host_stop.clear()
+        self._gpu_holder = None
+        self._order.clear()
+
+    # -- lanes -------------------------------------------------------------------------
+    def lane_of(self, job: dict[str, Any]) -> str:
+        """Which lane a job belongs to.
+
+        Only ``host`` runs on the CPU pool. Graph *and* chain go to the GPU lane: a chain workflow
+        is a host preprocessor feeding a ComfyUI graph in one job, its graph is incomplete until
+        that preprocessor has run, and letting it run anywhere else would either submit a graph with
+        a missing input or bypass the serial GPU rule. Splitting the two phases is its own project
+        (CHAIN-SPLIT in docs/QUEUE_ARCHITECTURE.md), not a side effect of this one.
+        """
+        if self.execution_type_of(job) != "host":
+            return LANE_GPU
+        if self._host_capacity() <= 0:
+            return LANE_GPU          # pool disabled: behave exactly like the old single queue
+        return LANE_CPU
+
+    def _host_capacity(self) -> int:
+        try:
+            return max(0, int(getattr(self.settings, "cpu_host_workers", 2)))
+        except (TypeError, ValueError):
+            return 2
+
+    def _memory_allows(self) -> bool:
+        """Soft admission gate: is there enough MemAvailable to start one more host tool?
+
+        A *brake*, not a guarantee (docs/QUEUE_ARCHITECTURE.md). It returns True when the threshold
+        is 0 and also when the metric cannot be read: an unavailable probe is not evidence of a
+        shortage, and making it one would stop the pool on any host without /proc/meminfo. The
+        telemetry row records that the check was unavailable rather than inventing a value.
+        """
+        threshold = int(getattr(self.settings, "cpu_host_min_available_mb", 0) or 0)
+        if threshold <= 0:
+            return True
+        try:
+            value = self._mem_available()
+        except Exception:  # noqa: BLE001 - a failing probe is not a memory shortage
+            value = None
+        self._mem_seen = value
+        if value is None:
+            return True
+        return int(value) >= threshold
+
+    def _poll_interval(self) -> float:
+        try:
+            return max(0.5, float(getattr(self.settings, "cpu_host_admission_poll_s", 5.0)))
+        except (TypeError, ValueError):
+            return 5.0
+
+    async def _dispatch_loop(self) -> None:
+        """Wake, hand out every slot that fits, sleep.
+
+        All admission state (``_order``, ``_gpu_holder``, ``_host_holders``) is touched only here and
+        in the lanes' own release paths — each of those runs in the event loop with no ``await``
+        between reading the state and writing it, so admission cannot interleave with a cancel or a
+        completion and cannot hand out one slot twice.
+        """
+        while True:
+            try:
+                await asyncio.wait_for(self._wake.wait(), timeout=self._poll_interval())
+            except asyncio.TimeoutError:
+                pass                    # poll tick: a memory-blocked lane may have recovered
+            self._wake.clear()
+            self._admit_ready()
+
+    def _admit_ready(self) -> None:
+        if not self._order:
+            return
+        host_cap = self._host_capacity()
+        memory_ok: bool | None = None
+        # Scanning from the left keeps FIFO inside each lane. A lane whose slots are full is
+        # skipped, not waited on, so a queue full of host work cannot starve a graph job sitting
+        # behind it (and vice versa).
+        for job_id in list(self._order):
+            if job_id in self._cancelled:
+                self._forget_queued(job_id)
+                continue
+            row = self.db.get_job(job_id)
+            if row is None or row["status"] in TERMINAL:
+                self._forget_queued(job_id)
+                continue
+            lane = self.lane_of(row)
+            if lane == LANE_GPU:
+                if self._gpu_holder is None:
+                    self._start_lane(job_id, LANE_GPU)
+                continue
+            if len(self._host_holders) >= host_cap:
+                self._note_wait(job_id, "slot")
+                continue
+            if memory_ok is None:
+                memory_ok = self._memory_allows()
+            if not memory_ok:
+                self._note_wait(job_id, "memavailable")
+                continue
+            self._start_lane(job_id, LANE_CPU)
+
+    def _start_lane(self, job_id: str, lane: str) -> None:
+        self._forget_queued(job_id)
+        self._stage.setdefault(job_id, "starting")
+        if lane == LANE_GPU:
+            self._gpu_holder = job_id
+            self._gpu_peak = max(self._gpu_peak, 1)
+        else:
+            self._host_holders[job_id] = None     # reserve the slot before the task exists
+            self._host_peak = max(self._host_peak, len(self._host_holders))
+        task = asyncio.create_task(self._run_lane(job_id, lane),
+                                   name=f"studio-job-{job_id[:8]}")
+        self._lane_tasks.add(task)
+        if lane == LANE_CPU:
+            self._host_holders[job_id] = task
+        task.add_done_callback(self._on_lane_done)
+
+    def _on_lane_done(self, task: asyncio.Task[None]) -> None:
+        self._lane_tasks.discard(task)
+        self._wake.set()          # a slot freed: rescan
+
+    def _release_lane(self, job_id: str, lane: str) -> None:
+        self._cancelled.discard(job_id)
+        if lane == LANE_GPU:
+            if self._gpu_holder == job_id:
+                self._gpu_holder = None
+        else:
+            self._host_holders.pop(job_id, None)
+            self._host_stop.pop(job_id, None)
+
+    def _forget_queued(self, job_id: str) -> None:
+        try:
+            self._order.remove(job_id)
+        except ValueError:
+            pass
+
+    def _note_wait(self, job_id: str, reason: str) -> None:
+        self._wait_since.setdefault(job_id, time.monotonic())
+        # The reading that *caused* this wait, kept per job: the global last-probe value may already
+        # show plenty of memory by the time the row is written, which would hide the reason.
+        if reason == "memavailable":
+            self._wait_mem[job_id] = self._mem_seen
+        # "memavailable" is the stronger statement: it explains a wait a slot count alone cannot.
+        if reason == "memavailable" or job_id not in self._wait_reason:
+            self._wait_reason[job_id] = reason
+
+    def lane_held_by(self, job_id: str) -> str | None:
+        """Which lane currently holds this job, if any. Synchronous on purpose: see cancel()."""
+        if self._gpu_holder == job_id:
+            return LANE_GPU
+        if job_id in self._host_holders:
+            return LANE_CPU
+        return None
+
+    async def _run_lane(self, job_id: str, lane: str) -> None:
+        observation = None
+        aborted = False
+        try:
+            observation = self._begin_telemetry(job_id)
+            await self._run_job(job_id)
+        except asyncio.CancelledError:
+            # Shutdown: the row stays in flight and reconcile settles it on the next start.
+            aborted = True
+            raise
+        except Exception as e:  # noqa: BLE001 - one lane must never take the others down
+            log.exception("job %s crashed its lane", job_id)
+            self.db.finish_job(job_id, "failed", error=f"internal error: {e}")
+        finally:
+            self._release_lane(job_id, lane)
+            if not aborted:
+                self._record_telemetry(job_id, observation, lane=lane)
+            self._wake.set()
 
     async def reconcile_orphans(self) -> int:
         """Settle jobs left mid-flight by a previous backend process.
@@ -151,8 +425,13 @@ class JobManager:
                     live.add(str(item[1]))
 
         adopted = 0
+        settled = 0
         for job_id in ids:
             row = self.db.get_job(job_id)
+            if (row or {}).get("status") == "queued":
+                # Never in flight, so nothing was interrupted: _rehydrate_queue() puts it back in the
+                # admission order. Settling it here would throw away work that never started.
+                continue
             prompt_id = (row or {}).get("prompt_id")
             if prompt_id and str(prompt_id) in live:
                 adopted += 1
@@ -167,7 +446,8 @@ class JobManager:
             )
             self.db.log_event(f"reconciled orphan job {job_id}", job_id=job_id, level="warn")
             self._record_telemetry(job_id)      # the row exists; its memory numbers do not
-        return len(ids) - adopted
+            settled += 1
+        return settled
 
     @property
     def client(self) -> ComfyClientProtocol:
@@ -258,7 +538,10 @@ class JobManager:
         self._progress[job_id] = 0.0
         self._stage[job_id] = "queued"
         self._mono[job_id] = {"queued": time.monotonic()}
-        await self._queue.put(job_id)
+        # Row first, then admission: a crash between the two loses nothing (the row is re-admitted on
+        # the next start), while the reverse order could run a job that has no record.
+        self._order.append(job_id)
+        self._wake.set()
         self.db.log_event(f"queued {wf.id}", job_id=job_id, user_id=user_id)
         return job, True
 
@@ -272,10 +555,19 @@ class JobManager:
         return self._checks.get(job_id)
 
     async def cancel(self, job_id: str, *, actor_id: str = "", is_admin: bool = True) -> dict[str, Any]:
-        """Stop a job. Only its owner or an admin may do so.
+        """Stop a job. Only its owner or an admin may do so, and only on the lane that holds it.
 
-        The interrupt reaches the whole ComfyUI graph, so an unguarded cancel was a way for one
-        family member to kill another's render — not a theoretical race, a button in the UI.
+        ComfyUI's ``/interrupt`` stops whatever graph the engine is running, so an unguarded cancel
+        was a way for one user to kill another's render — and with two lanes an unguarded cancel of a
+        thumbnail would kill a stranger's 27-minute render. The rule enforced here:
+
+        * the job holds no lane  -> it never started; finish the row, tell no one else;
+        * the job holds the GPU  -> ``/interrupt`` is allowed, but only if *this* job is the one
+          holding the slot, and only once it has a prompt_id in the engine. The check and the send
+          are in the same coroutine with no await between them, so a job admitted in that window
+          cannot have its graph killed by mistake;
+        * the job holds the CPU  -> set its stop event; the tool supervisor kills its own process
+          group. ``/interrupt`` is never sent for a host job.
         """
         job = self.db.get_job(job_id)
         if job is None:
@@ -285,17 +577,45 @@ class JobManager:
         if job["status"] in TERMINAL:
             return job
 
-        if job["status"] == "queued":
+        lane = self.lane_held_by(job_id)
+        if lane is None:
+            # Still in the admission order (or never admitted): nothing is running, so nothing has to
+            # be stopped. The dispatcher drops it from the order on its next scan.
             self._cancelled.add(job_id)
             self.db.finish_job(job_id, "cancelled", error="Cancelled before start.")
             self.db.log_event("cancelled while queued", job_id=job_id, user_id=actor_id)
-            # Queued cancels never reach the worker's finally-block if the queue is discarded, so
-            # the history row is written here. The worker replaces it with the same content later.
-            self._record_telemetry(job_id)
+            # The lane never runs this job, so the history row is written here.
+            self._record_telemetry(job_id, lane=self.lane_of(job))
+            self._wait_reason.pop(job_id, None)
+            self._wait_since.pop(job_id, None)
+            self._wait_mem.pop(job_id, None)
             return self.db.get_job(job_id) or job
 
-        # submitted / running -> ask ComfyUI to stop; never kill a process.
+        if lane == LANE_CPU:
+            self._cancel_reason[job_id] = "user"
+            self._host_stop.setdefault(job_id, threading.Event()).set()
+            self.db.update_job(job_id, stage="cancelling")
+            self.db.log_event("cancellation requested for a host job", job_id=job_id,
+                              user_id=actor_id)
+            return self.db.get_job(job_id) or job
+
+        # GPU lane. Remember the request either way: _run_job honours it before submitting a graph,
+        # so a cancel that lands between admission and submit still stops the job.
         self._interrupt_requested.add(job_id)
+        if not (job.get("prompt_id") or ""):
+            # Not in the engine yet. A chain job may still be inside its host preprocessing phase;
+            # its stop event ends that too (the token is harmless for a plain graph job).
+            self._host_stop.setdefault(job_id, threading.Event()).set()
+            self.db.update_job(job_id, stage="cancelling")
+            self.db.log_event("cancellation requested before submit", job_id=job_id,
+                              user_id=actor_id)
+            return self.db.get_job(job_id) or job
+        if self._gpu_holder != job_id:
+            # Belt and braces: the lane was released between the two reads above (impossible without
+            # an await in between, but the invariant is worth asserting rather than assuming).
+            self.db.log_event("interrupt skipped: the job no longer holds the GPU lane",
+                              job_id=job_id, level="warn", user_id=actor_id)
+            return self.db.get_job(job_id) or job
         try:
             await self.client.interrupt()
             self.db.log_event("interrupt sent to ComfyUI", job_id=job_id, user_id=actor_id)
@@ -338,10 +658,11 @@ class JobManager:
                      progress: float) -> int | None:
         """Rough wait before this job finishes, from this workflow's own recent run times.
 
-        Deliberately not a live model of the GPU: the queue is serial, so "mean duration × jobs
-        ahead" already tracks reality for a family queue, and inventing precision would only make
-        the number wrong in a more confident way. ``None`` means "no history yet" — the UI then
-        says "estimating" instead of showing a made-up minute count.
+        Deliberately not a live model of the GPU: inside a lane the queue is serial, so "mean
+        duration × jobs of mine ahead" already tracks reality for a family queue, and inventing
+        precision would only make the number wrong in a more confident way. Jobs in the *other* lane
+        are excluded — a thumbnail does not wait for the render behind it. ``None`` means "no history
+        yet": the UI then says "estimating" instead of showing a made-up minute count.
         """
         if job["status"] in TERMINAL:
             return None
@@ -349,26 +670,38 @@ class JobManager:
         if not mean:
             return None
         if job["status"] == "queued":
-            ahead = position if position is not None else 1
-            return int(mean * ahead)
+            ahead = self._ahead_in_lane(job)
+            return int(mean * max(1, ahead + 1))
         # Running: scale by what is left of the progress bar, floored at a few seconds.
         return max(3, int(mean * max(0.0, 1.0 - progress)))
 
+    def _ahead_in_lane(self, job: dict[str, Any]) -> int:
+        """How many jobs of the same lane are queued in front of this one."""
+        lane = self.lane_of(job)
+        ahead = 0
+        for other_id in self._order:
+            if other_id == job["id"]:
+                break
+            other = self.db.get_job(other_id)
+            if other is not None and self.lane_of(other) == lane:
+                ahead += 1
+        return ahead
+
     def _queued_position(self, job_id: str) -> int | None:
-        items = list(self._queue._queue)  # noqa: SLF001 - read-only introspection
         try:
-            return items.index(job_id) + 1
+            return self._order.index(job_id) + 1
         except ValueError:
             return None
 
     def snapshot(self, *, user_id: str | None = None) -> dict[str, Any]:
         """Queue state for the UI.
 
-        ``queue_depth`` is global on purpose — the queue *is* shared and serial, so pretending a
-        member has a private queue would misreport the wait. ``my_queued`` tells them how much of
-        it is theirs.
+        ``queue_depth`` is global on purpose — one admission order feeds both lanes, so pretending a
+        member has a private queue would misreport the wait. ``my_queued`` tells them how much of it
+        is theirs. ``running`` keeps its old meaning (the job holding the engine) and the lane fields
+        are additive, so an older client that only knows the first keys still works.
         """
-        queued = list(self._queue._queue)  # noqa: SLF001 - read-only introspection
+        queued = list(self._order)
         mine = None
         if user_id is not None:
             mine = 0
@@ -376,42 +709,25 @@ class JobManager:
                 row = self.db.get_job(job_id)
                 if row and (row.get("user_id") or "") == user_id:
                     mine += 1
+        host_running = sorted(self._host_holders)
         return {
-            "queue_depth": self._queue.qsize(),
-            "running": self._running_job,
-            "worker_alive": bool(self._worker and not self._worker.done()),
-            "cancelling": sorted(self._interrupt_requested),
+            "queue_depth": len(queued),
+            "running": self._gpu_holder,
+            "worker_alive": bool(self._dispatch_task and not self._dispatch_task.done()),
+            "cancelling": sorted(self._interrupt_requested | set(self._host_stop)),
             "my_queued": mine,
             "max_per_user": int(self.settings.max_user_active_jobs),
+            # --- lanes (additive) ---
+            "gpu_running": self._gpu_holder,
+            "host_running": host_running,
+            "host_workers": self._host_capacity(),
+            "gpu_max_concurrent": 1,
+            "host_peak": self._host_peak,
+            "lanes": {
+                LANE_GPU: [self._gpu_holder] if self._gpu_holder else [],
+                LANE_CPU: host_running,
+            },
         }
-
-    # -- worker -----------------------------------------------------------------------
-    async def _worker_loop(self) -> None:
-        while True:
-            job_id = await self._queue.get()
-            observation = None
-            aborted = False
-            try:
-                if job_id in self._cancelled:
-                    self._cancelled.discard(job_id)
-                    # The job row is already final (cancel() finished it); it still belongs in the
-                    # history, with the metrics it actually has — queue wait yes, execution NULL.
-                    continue
-                observation = self._begin_telemetry(job_id)
-                await self._run_job(job_id)
-            except asyncio.CancelledError:
-                # Shutdown: the job is still in flight. Do not write a row that claims otherwise;
-                # reconcile_orphans() settles it (and records it) on the next start.
-                aborted = True
-                raise
-            except Exception as e:  # noqa: BLE001 - a worker must never die
-                log.exception("job %s crashed the worker loop", job_id)
-                self.db.finish_job(job_id, "failed", error=f"internal error: {e}")
-            finally:
-                self._running_job = None
-                if not aborted:
-                    self._record_telemetry(job_id, observation)
-                self._queue.task_done()
 
     # -- telemetry --------------------------------------------------------------------
     def execution_type_of(self, job: dict[str, Any]) -> str | None:
@@ -454,7 +770,7 @@ class JobManager:
             "source": "monotonic",
         }
 
-    def _record_telemetry(self, job_id: str, observation=None) -> None:
+    def _record_telemetry(self, job_id: str, observation=None, *, lane: str | None = None) -> None:
         """Write the ledger row. Runs after the job row is final, and never raises."""
         telemetry = getattr(self, "telemetry", None)
         if telemetry is None:
@@ -465,8 +781,31 @@ class JobManager:
             summary = None
             if observation is not None:
                 summary = observation.stop()
-            telemetry.record(job_id, summary=summary, engine_ms=self._engine_ms.pop(job_id, None),
-                             timings=self._timings(job_id), check_errors=check_errors)
+            # Why the job waited, if it did: "slot" (both host workers busy) or "memavailable" (the
+            # soft admission brake). The observed MemAvailable is recorded next to it; None there
+            # means the probe failed, not that memory was fine.
+            reason = self._wait_reason.pop(job_id, None)
+            since = self._wait_since.pop(job_id, None)
+            saw_mb = self._wait_mem.pop(job_id, None)
+            admission = None
+            if reason is not None:
+                admission = {
+                    "reason": reason,
+                    "waited_ms": int((time.monotonic() - since) * 1000) if since else None,
+                    "min_available_mb": int(getattr(self.settings, "cpu_host_min_available_mb", 0)),
+                    # None = the probe could not be read; that is recorded as such, not as "0".
+                    "available_mb_at_check": saw_mb,
+                }
+            telemetry.record(
+                job_id, summary=summary, engine_ms=self._engine_ms.pop(job_id, None),
+                timings=self._timings(job_id), check_errors=check_errors, lane=lane,
+                concurrency={
+                    "host_workers": self._host_capacity(),
+                    "host_peak": self._host_peak,
+                    "gpu_max_concurrent": 1,
+                    "gpu_peak": self._gpu_peak,
+                },
+                admission=admission)
         except Exception:            # noqa: BLE001 - a lost row must not fail the run
             log.exception("could not record telemetry for %s", job_id)
 
@@ -478,8 +817,11 @@ class JobManager:
             self._cancelled.discard(job_id)
             self.db.finish_job(job_id, "cancelled", error="Cancelled before start.")
             return
+        if job["status"] in TERMINAL:
+            # Cancelled (or otherwise settled) between admission and this task getting the CPU.
+            # Nothing was started, and cancel() already wrote the final row.
+            return
 
-        self._running_job = job_id
         self.db.update_job(job_id, status="submitted", started_at=utcnow(), stage="submitting",
                            progress=0.05)
         marks = self._mono.setdefault(job_id, {})
@@ -512,6 +854,15 @@ class JobManager:
                                    error=f"{wf.host_tool} produced nothing ComfyUI can load")
                 return
 
+        # A cancel that landed while admission or the preprocessing was in flight: stop here, before
+        # anything is handed to the engine, so no /interrupt is needed and no graph is left running.
+        if job_id in self._interrupt_requested:
+            self._interrupt_requested.discard(job_id)
+            self._cancelled.add(job_id)
+            self.db.finish_job(job_id, "cancelled", error="Cancelled before submit.")
+            self._stage[job_id] = "cancelled"
+            return
+
         try:
             graph, resolved = self.registry.validate_and_build(
                 wf, job.get("params") or {}, chain_input=chain_input)
@@ -537,6 +888,17 @@ class JobManager:
         self._stage[job_id] = "running"
         self._progress[job_id] = 0.1
         self.db.log_event(f"submitted as {prompt_id}", job_id=job_id)
+
+        # The cancel arrived between the check above and the submit (cancel() saw no prompt_id yet, so
+        # it only set the flag). We hold the GPU lane and this prompt is ours, so interrupting now
+        # stops our own graph and nothing else.
+        if job_id in self._interrupt_requested:
+            try:
+                await self.client.interrupt()
+                self.db.log_event("interrupt sent for a cancel that preceded the submit",
+                                  job_id=job_id)
+            except ComfyError as e:  # noqa: BLE001
+                self.db.log_event(f"interrupt failed: {e}", job_id=job_id, level="warn")
 
         ws_task = None
         if getattr(self.settings, "progress_ws", True):
@@ -634,10 +996,22 @@ class JobManager:
         # they are given — the tool never sees a path it could escape into someone else's files.
         owner = job.get("user_id") or ""
         root = _scoped_root(self.output_root, owner)
+        stop_event = self._host_stop.setdefault(job_id, threading.Event())
         try:
             outputs = await asyncio.to_thread(
                 hosttools.run_host_tool, wf.host_tool, resolved, root,
-                timeout=timeout, on_stage=_stage_cb)
+                timeout=timeout, on_stage=_stage_cb, should_stop=stop_event.is_set)
+        except hosttools.HostToolCancelled as e:
+            # Our own stop request, never a tool failure: no engine call was made, and the tool
+            # removed every output name it had reserved, so no empty placeholder is left behind.
+            reason = self._cancel_reason.get(job_id, "user")
+            status = "cancelled" if reason == "user" else "interrupted"
+            message = ("Cancelled on request." if reason == "user"
+                       else "Interrupted: the studio backend shut down while this job was running.")
+            self.db.finish_job(job_id, status, error=message)
+            self.db.log_event(str(e), job_id=job_id, level="info", user_id=owner)
+            self._stage[job_id] = status
+            return None
         except hosttools.HostToolError as e:
             self.db.finish_job(job_id, "failed", error=f"{wf.host_tool}: {e}")
             self.db.log_event(str(e), job_id=job_id, level="error", user_id=owner)

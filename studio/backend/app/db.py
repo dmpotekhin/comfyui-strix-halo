@@ -275,6 +275,12 @@ class Database:
                 " ORDER BY version").fetchall()
         return [dict(r) for r in rows]
 
+    def integrity_check(self) -> str:
+        """``PRAGMA integrity_check`` — "ok" when several threads have been writing in parallel."""
+        with self._lock:
+            row = self._conn.execute("PRAGMA integrity_check").fetchone()
+        return str(row[0]) if row else "unknown"
+
     def close(self) -> None:
         with self._lock:
             self._conn.close()

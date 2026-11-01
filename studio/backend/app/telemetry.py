@@ -460,12 +460,19 @@ class ExecutionTelemetry:
     def build(self, job: dict[str, Any], *, summary: dict[str, Any] | None = None,
               engine_ms: int | None = None,
               check_errors: list[str] | None = None,
-              timings: dict[str, Any] | None = None) -> dict[str, Any]:
+              timings: dict[str, Any] | None = None,
+              lane: str | None = None,
+              concurrency: dict[str, Any] | None = None,
+              admission: dict[str, Any] | None = None) -> dict[str, Any]:
         """The ledger row for one job. Pure: no I/O, so tests can pin every field.
 
         ``timings`` carries the worker's monotonic measurements. Without them the durations are
         derived from the job row's ISO timestamps, which are stored at second resolution — those
         numbers are real but coarse, and ``timing_source`` says which kind the row holds.
+
+        ``lane`` / ``concurrency`` / ``admission`` describe *why* the job ran when and where it did.
+        They live inside ``metrics`` (a JSON column) rather than in new columns: the v3 schema stays
+        as it is, and a reader that does not know them is unaffected.
         """
         execution_type = self.execution_type(job)
         queued, started, done = job.get("created_at"), job.get("started_at"), job.get("finished_at")
@@ -476,6 +483,13 @@ class ExecutionTelemetry:
         code, message, raw = taxonomy.describe(
             job.get("status") or "", job.get("error"),
             execution_type=execution_type, check_errors=check_errors)
+        metrics = dict(summary or {})
+        if lane:
+            metrics["execution_lane"] = lane
+        if concurrency:
+            metrics["concurrency"] = concurrency
+        if admission:
+            metrics["admission"] = admission
         return {
             "job_id": job.get("id"),
             "workflow_id": job.get("workflow_id") or "",
@@ -507,7 +521,7 @@ class ExecutionTelemetry:
             "error_code": code if job.get("status") not in ("completed",) else None,
             "error_message": message,
             "error_raw": raw,
-            "metrics": summary or {},
+            "metrics": metrics,
             "created_at": utcnow(),
         }
 

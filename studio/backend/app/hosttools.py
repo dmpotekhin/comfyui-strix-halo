@@ -17,7 +17,11 @@ from __future__ import annotations
 
 import os
 import shutil
+import signal
 import subprocess
+import tempfile
+import threading
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -31,6 +35,72 @@ class HostToolError(RuntimeError):
     """Raised when a host tool cannot run or reports a failure."""
 
 
+class HostToolCancelled(HostToolError):
+    """The job was cancelled and the tool stopped on request — not a failure of the tool."""
+
+
+# Cancellation and output-name reservations belong to one *invocation*, and an invocation lives in
+# exactly one thread (``asyncio.to_thread``). Keeping both in thread-local state is what let the 34
+# pipelines become cancellable without touching a single tool signature.
+_CONTEXT = threading.local()
+_MAX_RESERVATION_SCAN = 100_000
+_STOP_POLL_S = 0.1        # how often a supervised child is checked for cancellation
+_STOP_GRACE_S = 5.0       # SIGTERM → wait this long → SIGKILL the whole process group
+
+
+def _reservations() -> list[Path]:
+    reg = getattr(_CONTEXT, "reserved", None)
+    if reg is None:
+        reg = []
+        _CONTEXT.reserved = reg
+    return reg
+
+
+def _reserve(path: Path) -> bool:
+    """Create ``path`` exclusively: True when this call created it, False when it already existed.
+
+    ``O_CREAT|O_EXCL`` is the whole point. Two host workers scanning for a free counter at the same
+    moment used to agree on one name and overwrite each other; the kernel now decides. The file
+    created here is an empty placeholder that the tool writes over (every ffmpeg call passes -y,
+    piper and Pillow truncate), and it is removed again if the run fails or is cancelled.
+    """
+    try:
+        fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+    except FileExistsError:
+        return False
+    except OSError as e:
+        raise HostToolError(f"cannot reserve output name {path.name}: {e}") from None
+    os.close(fd)
+    _reservations().append(path)
+    return True
+
+
+def _release_reservations(*, keep: bool) -> None:
+    """Drop this invocation's reserved names. ``keep`` leaves the (by now real) outputs in place."""
+    reg = _reservations()
+    if keep:
+        reg.clear()
+        return
+    while reg:
+        path = reg.pop()
+        try:
+            if path.is_file():
+                path.unlink()      # a placeholder, or the partial output of a failed run: ours
+        except OSError:
+            pass
+
+
+def _unreserve(path: Path) -> None:
+    """Give back one placeholder that lost a two-folder race."""
+    reg = _reservations()
+    if path in reg:
+        reg.remove(path)
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
 def available_voices() -> list[str]:
     if not VOICES_DIR.is_dir():
         return []
@@ -38,14 +108,13 @@ def available_voices() -> list[str]:
 
 
 def _unique_target(folder: Path, stem: str, suffix: str) -> Path:
-    """studio/tts_ru_00001_.wav — never reuses an existing name."""
+    """studio/tts_ru_00001_.wav — reserved atomically, so two workers never pick the same name."""
     folder.mkdir(parents=True, exist_ok=True)
-    n = 1
-    while True:
+    for n in range(1, _MAX_RESERVATION_SCAN + 1):
         candidate = folder / f"{stem}_{n:05d}_.{suffix}"
-        if not candidate.exists():
+        if _reserve(candidate):
             return candidate
-        n += 1
+    raise HostToolError(f"no free name left in {folder} for {stem}_*.{suffix}")
 
 
 PROJECT_ROOT = STUDIO_ROOT.parent
@@ -70,7 +139,23 @@ def _run(argv: list[str], *, timeout: float, stdin_text: str | None = None,
          env: dict[str, str] | None = None,
          capture: bool = False) -> subprocess.CompletedProcess[str] | None:
     """Run a fixed argv. With capture=True return the completed process so a caller can read stdout —
-    needed by tools whose *product is the text*, not a file (the vision model)."""
+    needed by tools whose *product is the text*, not a file (the vision model).
+
+    When the invocation is cancellable (every lane worker makes it so), the child runs in its own
+    process group and is stopped with SIGTERM → grace period → SIGKILL, so a cancellation or a
+    shutdown never leaves an ffmpeg behind. Without a cancellation check the plain
+    ``subprocess.run`` path is kept, which is what the standalone CLI tools get.
+    """
+    check = getattr(_CONTEXT, "stop", None)
+    if check is None:
+        return _run_blocking(argv, timeout=timeout, stdin_text=stdin_text, env=env, capture=capture)
+    return _run_supervised(argv, timeout=timeout, stdin_text=stdin_text, env=env,
+                           capture=capture, check=check)
+
+
+def _run_blocking(argv: list[str], *, timeout: float, stdin_text: str | None = None,
+                  env: dict[str, str] | None = None,
+                  capture: bool = False) -> subprocess.CompletedProcess[str] | None:
     try:
         proc = subprocess.run(argv, input=stdin_text, capture_output=True, text=True,
                               timeout=timeout, env=env, check=False)
@@ -82,6 +167,85 @@ def _run(argv: list[str], *, timeout: float, stdin_text: str | None = None,
         tail = (proc.stderr or proc.stdout or "").strip().splitlines()[-3:]
         raise HostToolError(f"{Path(argv[0]).name} exited {proc.returncode}: {' | '.join(tail)}")
     return proc if capture else None
+
+
+def _run_supervised(argv: list[str], *, timeout: float, stdin_text: str | None,
+                    env: dict[str, str] | None, capture: bool, check: Callable[[], bool],
+                    ) -> subprocess.CompletedProcess[str] | None:
+    """``_run`` with a poll loop: cancellation, timeout and process-group cleanup."""
+    name = Path(argv[0]).name
+    stdin_file = None
+    try:
+        if stdin_text is not None:
+            # A real file rather than a pipe: no deadlock with a child that writes a lot while we
+            # are busy polling, and nothing to close twice.
+            stdin_file = tempfile.TemporaryFile(mode="w+", encoding="utf-8")
+            stdin_file.write(stdin_text)
+            stdin_file.seek(0)
+        try:
+            proc = subprocess.Popen(
+                argv,
+                stdin=stdin_file if stdin_file is not None else subprocess.DEVNULL,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env,
+                start_new_session=True)
+        except FileNotFoundError:
+            raise HostToolError(f"executable not found: {argv[0]}") from None
+        deadline = time.monotonic() + timeout
+        out = err = ""
+        while True:
+            if check():
+                _terminate_group(proc)
+                raise HostToolCancelled(f"{name} cancelled")
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                _terminate_group(proc)
+                raise HostToolError(f"{name} timed out after {timeout:.0f}s")
+            try:
+                out, err = proc.communicate(timeout=min(_STOP_POLL_S, remaining))
+                break
+            except subprocess.TimeoutExpired:
+                continue
+        if proc.returncode != 0:
+            tail = (err or out or "").strip().splitlines()[-3:]
+            raise HostToolError(f"{name} exited {proc.returncode}: {' | '.join(tail)}")
+        return subprocess.CompletedProcess(argv, proc.returncode, out, err) if capture else None
+    finally:
+        if stdin_file is not None:
+            stdin_file.close()
+
+
+def _signal_group(pgid: int, sig: int) -> None:
+    try:
+        os.killpg(pgid, sig)
+    except ProcessLookupError:
+        return
+    except OSError:            # noqa: BLE001 - a process group we cannot signal is not ours to kill
+        return
+
+
+def _terminate_group(proc: subprocess.Popen[str]) -> tuple[str, str]:
+    """SIGTERM the child's process group, wait the grace period, then SIGKILL it.
+
+    The *group* matters: the tool binaries spawn helpers (the vision venv is a python that starts
+    its own children), and killing only the leader leaves those running while holding our pipes.
+    """
+    if proc.poll() is None:
+        try:
+            pgid = os.getpgid(proc.pid)
+        except ProcessLookupError:
+            pgid = None
+        if pgid is not None:
+            _signal_group(pgid, signal.SIGTERM)
+            try:
+                out, err = proc.communicate(timeout=_STOP_GRACE_S)
+                return out or "", err or ""
+            except subprocess.TimeoutExpired:
+                _signal_group(pgid, signal.SIGKILL)
+    try:
+        out, err = proc.communicate(timeout=5.0)
+        return out or "", err or ""
+    except subprocess.TimeoutExpired:
+        return "", ""
 
 
 # --------------------------------------------------------------------------- piper TTS
@@ -337,15 +501,22 @@ def media_path(params: dict[str, Any], key: str, what: str) -> Path:
 
 
 def _unique_pair(out_dir: Path, in_dir: Path, stem: str, suffix: str) -> str:
-    """One name that is free in both the output folder and ComfyUI's input folder."""
+    """One name reserved in *both* folders.
+
+    Two users have different output folders but share ComfyUI's input folder, so checking (or
+    reserving) only one of the two does not prevent a collision — the input placeholder is taken
+    first, precisely because that is the shared resource.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     in_dir.mkdir(parents=True, exist_ok=True)
-    n = 1
-    while True:
+    for n in range(1, _MAX_RESERVATION_SCAN + 1):
         name = f"{stem}_{n:05d}_.{suffix}"
-        if not (out_dir / name).exists() and not (in_dir / name).exists():
+        if not _reserve(in_dir / name):
+            continue
+        if _reserve(out_dir / name):
             return name
-        n += 1
+        _unreserve(in_dir / name)
+    raise HostToolError(f"no free name left for {stem}_*.{suffix}")
 
 
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
@@ -610,11 +781,32 @@ def host_readiness(tool: str) -> tuple[str, str]:
 
 
 def run_host_tool(tool: str, params: dict[str, Any], output_root: Path, *, timeout: float,
-                  on_stage: Callable[[str, float], None] | None = None) -> list[dict[str, Any]]:
+                  on_stage: Callable[[str, float], None] | None = None,
+                  should_stop: Callable[[], bool] | None = None) -> list[dict[str, Any]]:
+    """Run a host tool inside an optional cancellation scope.
+
+    ``should_stop`` is polled while a child process runs; a cancelled run raises
+    ``HostToolCancelled`` and every output name this invocation reserved is given back, so a
+    cancelled job leaves no empty placeholder behind.
+    """
     fn = TOOLS.get(tool)
     if fn is None:
         raise HostToolError(f"unknown host tool {tool!r}; known: {', '.join(sorted(TOOLS))}")
-    return fn(params, output_root, timeout=timeout, on_stage=on_stage)
+    prev_stop = getattr(_CONTEXT, "stop", None)
+    prev_reserved = getattr(_CONTEXT, "reserved", None)
+    _CONTEXT.stop = should_stop
+    _CONTEXT.reserved = []
+    try:
+        out = fn(params, output_root, timeout=timeout, on_stage=on_stage)
+    except BaseException:
+        _release_reservations(keep=False)
+        raise
+    else:
+        _release_reservations(keep=True)
+        return out
+    finally:
+        _CONTEXT.stop = prev_stop
+        _CONTEXT.reserved = prev_reserved
 
 # --------------------------------------------------------------------------- Stage 5: host media tools
 # Everything below extends the host layer with capabilities ComfyUI does not provide cheaply:
