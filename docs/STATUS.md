@@ -1,23 +1,23 @@
 # STATUS — generated, do not hand-edit
 
-Regenerated: 2026-11-01 12:43 MSK by `python3 studio/tools/gen_status.py`.
+Regenerated: 2026-11-01 16:41 MSK by `python3 studio/tools/gen_status.py`.
 Every number below is computed from the working tree, from pytest artefacts, or from a
 live engine query. If a source is unavailable the row says so — nothing is filled in.
 
 ## Code
 
 | branch | `main` |
-| HEAD | `43a4d326a1e3` — feat(memory): advisory pre-run memory estimator (step 5) |
-| committed | 2026-11-01T12:43:43+03:00 |
+| HEAD | `2bbef4a96966` — docs(rbac): sessions, upload ownership, and the two known gaps |
+| committed | 2026-11-01T16:38:39+03:00 |
 | working tree | clean |
 
 ## Tests
 
-Last recorded run: **PASS** — 556 tests, 0 failures, 0 errors, 0 skipped, 52.9 s (artefact written 2026-11-01 12:43 MSK).
+Last recorded run: **PASS** — 615 tests, 0 failures, 0 errors, 0 skipped, 67.2 s (artefact written 2026-11-01 16:41 MSK).
 
-Test functions declared in the tree: 494 (static count; parametrisation multiplies the executed total).
+Test functions declared in the tree: 553 (static count; parametrisation multiplies the executed total).
 
-Coverage: **77.2%** — 4577/5931 statements, 1354 missed (artefact written 2026-11-01 12:43 MSK).
+Coverage: **78.0%** — 4825/6182 statements, 1357 missed (artefact written 2026-11-01 16:41 MSK).
 
 | module | coverage | covered | statements | missed |
 |---|---:|---:|---:|---:|
@@ -28,17 +28,18 @@ Coverage: **77.2%** — 4577/5931 statements, 1354 missed (artefact written 2026
 | `hosttools.py` | 62.6% | 575 | 918 | 343 |
 | `config.py` | 71.8% | 107 | 149 | 42 |
 | `catalog.py` | 72.8% | 150 | 206 | 56 |
-| `jobs.py` | 78.5% | 617 | 786 | 169 |
+| `jobs.py` | 78.4% | 616 | 786 | 170 |
 | `router.py` | 79.7% | 63 | 79 | 16 |
-| `registry.py` | 81.4% | 333 | 409 | 76 |
-| `api.py` | 83.3% | 535 | 642 | 107 |
+| `registry.py` | 81.9% | 335 | 409 | 74 |
+| `api.py` | 86.0% | 633 | 736 | 103 |
 | `modelscan.py` | 86.4% | 38 | 44 | 6 |
-| `db.py` | 87.0% | 335 | 385 | 50 |
+| `db.py` | 87.9% | 362 | 412 | 50 |
 | `paths.py` | 88.6% | 62 | 70 | 8 |
 | `graphcheck.py` | 91.4% | 192 | 210 | 18 |
 | `media.py` | 91.7% | 22 | 24 | 2 |
 | `probe.py` | 91.7% | 22 | 24 | 2 |
 | `telemetry.py` | 92.3% | 299 | 324 | 25 |
+| `rbac.py` | 93.8% | 122 | 130 | 8 |
 | `inventory.py` | 94.1% | 177 | 188 | 11 |
 | `schemas.py` | 95.1% | 175 | 184 | 9 |
 | `taxonomy.py` | 95.7% | 45 | 47 | 2 |
@@ -70,11 +71,11 @@ Model files on disk: **12** (44.92 GB); catalogued: **19** (see `docs/model_depe
 
 ## Live host
 
-ComfyUI 0.15.0 · torch 2.9.1+rocm7.2.0.git7e1940d4 · cuda:0 AMD Radeon Graphics : native (cuda) · VRAM 95.3/96.0 GB free
+ComfyUI 0.15.0 · torch 2.9.1+rocm7.2.0.git7e1940d4 · cuda:0 AMD Radeon Graphics : native (cuda) · VRAM 95.2/96.0 GB free
 
-Unified memory (sysfs/proc, independent of the engine): vram used gb 1.84, gtt used gb 0.13, mem total gb 30.5, mem available gb 19.4
+Unified memory (sysfs/proc, independent of the engine): vram used gb 1.83, gtt used gb 0.2, mem total gb 30.5, mem available gb 18.0
 
-Disk free on the project volume: 709.5 GB of 936.8 GB.
+Disk free on the project volume: 709.3 GB of 936.8 GB.
 
 ## Cancelling a running host job
 
@@ -114,7 +115,7 @@ Routes declared in `app/memory/router.py` (read-only, behind the existing sessio
 * `GET /api/memory/history`
 * `POST /api/memory/estimate`
 
-The **running Studio (`http://192.168.31.60:8000`) returns 404** for these routes: its process predates them, so they exist in code but not in the live service until an approved restart (TD-34).
+The running Studio (`http://192.168.31.60:8000`) serves the route and answers 401 without a session, as designed.
 
 Last calibration (`tools/memory_calibrate.py`, readonly DB): 8 observations, 8 analysed, 4 forecastable, 4 scored, 2 above the 100.0 MB significance threshold; MAE 23.7 MB, MAPE 6.5 %.
 
