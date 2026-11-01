@@ -22,6 +22,7 @@ Step 5 is accepted at `9ea03fb44c48` (pushed to `origin/main`). Step 6 is out of
 | ComfyUI cgroup | `system.slice/docker-d0e615…scope`; `memory.current` **16.66 GB** = **anon 5.69 GB + file (page cache) 10.88 GB** + slab 69 MB; `memory.peak` 26.4 GB | `/sys/fs/cgroup`, `memory.stat` |
 | system memory | `MemTotal` 31.2 GB, `MemAvailable` 19.5 GB | `/proc/meminfo` |
 | sudo | **not passwordless** (`sudo -n true` → "interactive authentication is required") | `sudo -n true` |
+| sqlite3 CLI | **not installed** (`rc=127`); every DB read below uses `studio/.venv/bin/python` + `sqlite3` module | `which sqlite3` |
 
 Consequences that shape the whole plan:
 
@@ -45,8 +46,11 @@ systemctl is-active comfyui-studio.service            # expect active
 systemctl show comfyui-studio.service -p MainPID -p ExecMainStartTimestamp --no-pager
 curl -s --max-time 4 http://127.0.0.1:8188/queue      # expect empty queue_running/queue_pending
 curl -s --max-time 4 http://127.0.0.1:8188/system_stats | head -c 200
-sqlite3 'file:studio/data/studio.db?mode=ro' "select status,count(*) from jobs group by status;"
-sqlite3 'file:studio/data/studio.db?mode=ro' "select count(*) from jobs where status in ('running','queued');"
+# sqlite3 CLI is absent on this host; read-only helper used everywhere below
+q() { studio/.venv/bin/python -c "import sqlite3,sys;c=sqlite3.connect('file:studio/data/studio.db?mode=ro',uri=True);print(c.execute(sys.argv[1]).fetchall())" "$1"; }
+q "select status,count(*) from jobs group by status"
+q "select count(*) from jobs where status in ('running','queued')"
+q "pragma user_version"; q "pragma integrity_check"
 ```
 
 Stop condition: any running/queued job, a dirty tree, a HEAD other than `9ea03fb`, or an engine queue
@@ -105,13 +109,13 @@ curl -s -b "$COOKIE" 'http://192.168.31.60:8000/api/memory/history?workflow_id=v
   | python3 -m json.tool | head -30
 
 # estimate must create nothing: capture counters around it
-sqlite3 'file:studio/data/studio.db?mode=ro' "select count(*),max(created_at) from jobs;"
-sqlite3 'file:studio/data/studio.db?mode=ro' "select count(*) from job_telemetry;"
+q "select count(*),max(created_at) from jobs"
+q "select count(*) from job_telemetry"
 curl -s -b "$COOKIE" -H "content-type: application/json" -H "x-csrf-token: $CSRF" \
   -d '{"workflow_id":"style-anime","params":{}}' http://192.168.31.60:8000/api/memory/estimate \
   | python3 -m json.tool | grep -A4 '"cost"'
-sqlite3 'file:studio/data/studio.db?mode=ro' "select count(*),max(created_at) from jobs;"   # identical
-sqlite3 'file:studio/data/studio.db?mode=ro' "select count(*) from job_telemetry;"          # identical
+q "select count(*),max(created_at) from jobs"                   # identical
+q "select count(*) from job_telemetry"                         # identical
 curl -s --max-time 4 http://127.0.0.1:8188/queue | head -c 120                              # still empty
 curl -s --max-time 4 http://127.0.0.1:8188/history | python3 -c 'import json,sys;print(len(json.load(sys.stdin)))'
 ```
@@ -132,11 +136,20 @@ unchanged, health 200 for 5 consecutive minutes.
 ```bash
 cd /home/dmitry/workspace/comfyui-strix-halo
 TS=$(date +%Y%m%d-%H%M)
-sqlite3 'file:studio/data/studio.db?mode=ro' ".backup studio/data/backups/studio-pre-5.1-$TS.db"
-sqlite3 "studio/data/backups/studio-pre-5.1-$TS.db" "pragma integrity_check; pragma user_version;
-  select count(*) from jobs; select count(*) from outputs; select count(*) from users;
-  select count(*) from events; select count(*) from job_telemetry;"
-sha256sum studio/data/backups/studio-pre-5.1-$TS.db studio/data/studio.db
+BAK="studio/data/backups/studio-pre-5.1-$TS.db"
+# SQLite online-backup API from a read-only source connection (the sqlite3 CLI is not installed).
+# A plain cp of a live database is not a backup.
+studio/.venv/bin/python -c "
+import sqlite3
+src = sqlite3.connect('file:studio/data/studio.db?mode=ro', uri=True)
+dst = sqlite3.connect('$BAK'); src.backup(dst); dst.close(); src.close()
+v = sqlite3.connect('$BAK')
+print(v.execute('pragma integrity_check').fetchone())
+print('user_version', v.execute('pragma user_version').fetchone())
+for t in ('jobs','outputs','users','events','job_telemetry'):
+    print(t, v.execute(f'select count(*) from {t}').fetchone()[0])
+"
+sha256sum "$BAK" studio/data/studio.db
 ```
 Gate: `integrity_check=ok`, `user_version=3`, counts equal to the live DB (140/156/3/390/10), backup
 non-zero size. A backup that fails any of these stops the whole run.
@@ -383,11 +396,17 @@ cd /home/dmitry/workspace/comfyui-strix-halo
 git rev-parse HEAD; git status --porcelain
 systemctl is-active comfyui-studio.service
 curl -s http://127.0.0.1:8188/queue
-sqlite3 'file:studio/data/studio.db?mode=ro' "select count(*) from jobs where status in ('running','queued');"
-TS=$(date +%Y%m%d-%H%M)
-sqlite3 'file:studio/data/studio.db?mode=ro' ".backup studio/data/backups/studio-pre-5.1-$TS.db"
-sqlite3 "studio/data/backups/studio-pre-5.1-$TS.db" "pragma integrity_check; pragma user_version; select count(*) from jobs;"
-sha256sum studio/data/backups/studio-pre-5.1-$TS.db studio/data/studio.db
+q() { studio/.venv/bin/python -c "import sqlite3,sys;c=sqlite3.connect('file:studio/data/studio.db?mode=ro',uri=True);print(c.execute(sys.argv[1]).fetchall())" "$1"; }
+q "select count(*) from jobs where status in ('running','queued')"
+TS=$(date +%Y%m%d-%H%M); BAK="studio/data/backups/studio-pre-5.1-$TS.db"
+studio/.venv/bin/python -c "
+import sqlite3
+src = sqlite3.connect('file:studio/data/studio.db?mode=ro', uri=True)
+dst = sqlite3.connect('$BAK'); src.backup(dst); dst.close(); src.close()
+v = sqlite3.connect('$BAK')
+print(v.execute('pragma integrity_check').fetchone(), v.execute('pragma user_version').fetchone(), v.execute('select count(*) from jobs').fetchone())
+"
+sha256sum "$BAK" studio/data/studio.db
 sudo systemctl restart comfyui-studio.service            # OWNER
 sleep 15
 systemctl show comfyui-studio.service -p MainPID -p ExecMainStartTimestamp --no-pager
