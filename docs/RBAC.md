@@ -58,6 +58,7 @@ Read at startup and on `POST /api/engine/refresh`, so changing it does not need 
 | `model_folders` | folders shown in `/api/models` and `/api/models/catalog` |
 | `allow_upload` | may `POST /api/uploads` (image inputs for img2img-style workflows) |
 | `max_active_jobs` | ceiling for this account's queued+running jobs; can only tighten the global `STUDIO_MAX_USER_ACTIVE_JOBS` |
+| `max_output_gb` | total size of the account's outputs, in decimal GB. At or over the allowance a new submission is refused (429) until the account deletes something |
 | `max_jobs_per_day` | how many submissions the account may make per UTC day (`null`/absent = no allowance). Reruns count. Checked before the queue-depth cap, so a finished run does not buy a new one |
 
 A workflow is allowed when **its id is listed or its category is listed**. Nothing else.
@@ -66,7 +67,7 @@ A workflow is allowed when **its id is listed or its category is listed**. Nothi
 Missing file → built-in defaults: admin and user unrestricted, child denied everything until a
 policy is written. The shipped `rbac.json` gives a child 55 of the 127 registered workflows
 (33 image-editing, 9 image-enhancement, 9 vision-language, plus 4 named generation workflows),
-one active job at a time, and 40 runs per day; its model folders are exactly the ones those 55
+one active job at a time, 40 runs per day, and 10 GB of outputs; its model folders are exactly the ones those 55
 workflows reference (`checkpoints`, `upscale_models`, `vae`, `vision-models`, `vlm-models`),
 derived from the registry rather than guessed. Malformed file → same defaults plus a warning in the log; the child stays
 denied rather than accidentally trusted.
@@ -105,6 +106,10 @@ Honest list, so nobody mistakes this for a finished permission system:
 3. **Per-model restrictions are visibility + workflow gating**, not per-file ACLs: a child can
    still see the *files* in an allowed folder, and a workflow that needs a hidden model is
    simply not offered.
-4. **Quotas** (disk, generations per day) are not implemented; only concurrent-job caps.
-5. **Audit trail of denials** covers submissions over the job cap; other 403s are not logged.
+4. **Allowances are checked at submission, not reserved**: two runs submitted just under the
+   storage allowance can both finish over it, and the storage check uses the recorded output
+   sizes (files written outside the outputs table are not counted).
+5. **Audit trail of denials** covers the three submission refusals (active cap, daily
+   allowance, storage allowance) as `warn` events with the `user_id`; a 403 on a forbidden
+   workflow or a blocked upload is *not* logged yet.
 6. **The SPA is not the boundary** and never will be — treat `dist/assets/*.js` as UI only.

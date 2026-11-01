@@ -8,8 +8,9 @@
     "The child list below is exactly what the child's 55 allowed workflows can touch, so a",
     "  workflow that gains a new model folder will visibly stop being complete for them.",
     "Deleting or downloading a model and changing settings stay admin-only in the routes.",
-    "max_active_jobs can only tighten STUDIO_MAX_USER_ACTIVE_JOBS; max_jobs_per_day is a",
-    "  separate household allowance counted over UTC days (a rerun counts as a run)."
+    "max_active_jobs can only tighten STUDIO_MAX_USER_ACTIVE_JOBS; max_jobs_per_day and",
+    "  max_output_gb are separate household allowances: runs per UTC day (a rerun counts)",
+    "  and the total size of the account's outputs. Both answer 429 until something is freed."
   ],
   "version": 1,
   "roles": {
@@ -25,7 +26,8 @@
       "model_folders": ["checkpoints", "upscale_models", "vae", "vision-models", "vlm-models"],
       "allow_upload": true,
       "max_active_jobs": 1,
-      "max_jobs_per_day": 40
+      "max_jobs_per_day": 40,
+      "max_output_gb": 10
     }
   }
 }

@@ -339,6 +339,7 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
                           "active_jobs": state.db.active_jobs_for(user.id),
                           "jobs_today": state.db.jobs_today(user.id),
                           "max_jobs_per_day": state.rbac.max_jobs_per_day(user.role),
+                          "max_output_bytes": state.rbac.max_output_bytes(user.role),
                           "upload": state.rbac.may_upload(user.role)}
         return data
 
@@ -465,6 +466,15 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         a person can act on. The daily allowance matters for a shared machine: the active-job
         cap alone would let a child profile start a new run the moment the previous one ends.
         """
+        quota = state.rbac.max_output_bytes(user.role)
+        if quota:
+            used = state.db.usage_for(user.id)["outputs"]["bytes"]
+            if used >= quota:
+                state.db.log_event("blocked a submission over the role's storage allowance",
+                                   level="warn", user_id=user.id)
+                raise HTTPException(429, f"storage limit reached: {used / 1e9:.1f} GB of "
+                                        f"{quota / 1e9:.0f} GB used by your outputs; delete "
+                                        "some to free space")
         per_day = state.rbac.max_jobs_per_day(user.role)
         if per_day:
             today = state.db.jobs_today(user.id)

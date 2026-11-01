@@ -37,6 +37,10 @@ CHILD = "child"
 #: Full role list for account creation/validation. Order matters for the CLI's ``--role`` help.
 ROLES: tuple[str, ...] = (ADMIN, USER, CHILD)
 
+#: Decimal gigabytes on purpose: the policy file says "20", people mean 20 000 000 000 bytes of
+#: output, and `du -h` showing 18.6 GiB for that is not a bug report we want to answer.
+GB = 1_000_000_000
+
 
 @dataclass(frozen=True)
 class RolePolicy:
@@ -51,6 +55,10 @@ class RolePolicy:
     allow_upload: bool = False
     #: ``None`` means "no role-specific cap": the global ``settings.max_user_active_jobs`` applies.
     max_active_jobs: int | None = None
+    #: How much disk the role's outputs may occupy, in bytes. ``None`` = unlimited. Checked at
+    #: submission time because there is no per-file delete hook to run the check in: the account
+    #: is stopped from *adding* more once it is over, and deleting old outputs frees the space.
+    max_output_bytes: int | None = None
     #: How many submissions the role may make per UTC day. ``None`` = unlimited. A household
     #: control, not a performance limit: it is the only way to stop a child profile from
     #: queueing hundreds of runs overnight on a machine the whole family shares.
@@ -96,6 +104,15 @@ def _int_or_none(value: Any) -> int | None:
     return n if n > 0 else None
 
 
+def _gb_to_bytes(value: Any) -> int | None:
+    """A human wrote gigabytes; the database counts bytes. Non-numeric or non-positive → None."""
+    try:
+        gb = float(value)
+    except (TypeError, ValueError):
+        return None
+    return int(gb * GB) if gb > 0 else None
+
+
 def policy_from_dict(role: str, raw: dict[str, Any] | None) -> RolePolicy:
     """Build one policy. Unknown keys are ignored; wrong types degrade to the safe default."""
     if role == ADMIN:
@@ -113,6 +130,7 @@ def policy_from_dict(role: str, raw: dict[str, Any] | None) -> RolePolicy:
         model_folders=_str_set(raw.get("model_folders")),
         allow_upload=bool(raw.get("allow_upload", False)),
         max_active_jobs=_int_or_none(raw.get("max_active_jobs")),
+        max_output_bytes=_gb_to_bytes(raw.get("max_output_gb")),
         max_jobs_per_day=_int_or_none(raw.get("max_jobs_per_day")),
     )
 
@@ -184,6 +202,10 @@ class Rbac:
             return int(fallback)
         return min(int(cap), int(fallback))
 
+    def max_output_bytes(self, role: str | None) -> int | None:
+        """The role's storage allowance in bytes, or ``None`` for no allowance."""
+        return self.policy(role).max_output_bytes
+
     def max_jobs_per_day(self, role: str | None) -> int | None:
         """The role's daily submission allowance, or ``None`` for no allowance limit."""
         return self.policy(role).max_jobs_per_day
@@ -216,6 +238,8 @@ class Rbac:
             "upload": pol.allow_upload,
             "max_active_jobs": pol.max_active_jobs,
             "max_jobs_per_day": pol.max_jobs_per_day,
+            "max_output_gb": (round(pol.max_output_bytes / GB, 1)
+                              if pol.max_output_bytes else None),
         }
 
     def describe(self) -> dict[str, Any]:

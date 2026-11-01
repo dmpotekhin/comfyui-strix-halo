@@ -293,6 +293,51 @@ def test_allowance_is_per_account_not_per_day_total(kid):
     assert r.status_code in (200, 201, 202), r.text
 
 
+def test_storage_allowance_is_parsed_in_gigabytes(tmp_path):
+    from app.rbac import GB, Rbac
+
+    p = tmp_path / "rbac.json"
+    p.write_text(json.dumps({"roles": {"child": {"max_output_gb": 2.5}}}), encoding="utf-8")
+    rb = Rbac.load(p)
+    assert rb.max_output_bytes("child") == int(2.5 * GB)
+    assert rb.max_output_bytes("user") is None
+    assert rb.capabilities("child")["max_output_gb"] == 2.5
+    p.write_text(json.dumps({"roles": {"child": {"max_output_gb": "lots"}}}), encoding="utf-8")
+    assert Rbac.load(p).max_output_bytes("child") is None      # a typo must not become a quota
+
+
+def test_child_storage_allowance_blocks_new_runs(kid):
+    """Filled quota → no new run, and the message says how to fix it."""
+    from app.rbac import GB
+
+    st = kid["state"]
+    install_policy(kid["project"], st, policy_doc(max_active_jobs=5, max_output_gb=0.001))
+    seed_job(st, kid["user"]["id"], "kid-files", workflow_id="kid-edit", status="completed")
+    st.db.add_outputs("kid-files", "kid-edit",
+                      [{"filename": "big.png", "kind": "image", "size": 2 * int(0.001 * GB)}],
+                      user_id=kid["user"]["id"])
+    r = kid["client"].post("/api/jobs", json={"workflow_id": "kid-edit",
+                                              "params": {"prompt": "a cat"}})
+    assert r.status_code == 429
+    assert "storage limit" in r.text
+    assert "delete" in r.text
+
+
+def test_storage_allowance_does_not_apply_to_adults(kid):
+    from app.rbac import GB
+
+    st = kid["state"]
+    install_policy(kid["project"], st, policy_doc(max_active_jobs=5, max_output_gb=0.001))
+    admin_id = kid["admin"].users["dmitry"]["id"]
+    seed_job(st, admin_id, "admin-files", status="completed")
+    st.db.add_outputs("admin-files", "test-turbo",
+                      [{"filename": "big.png", "kind": "image", "size": int(0.002 * GB)}],
+                      user_id=admin_id)
+    r = kid["admin"].post("/api/jobs", json={"workflow_id": "test-turbo",
+                                            "params": {"prompt": "a cat"}})
+    assert r.status_code in (200, 201, 202), r.text
+
+
 def test_child_has_no_admin_surfaces(kid):
     c = kid["client"]
     assert c.get("/api/users").status_code == 403
