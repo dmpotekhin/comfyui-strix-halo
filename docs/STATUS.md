@@ -7,9 +7,9 @@ live engine query. If a source is unavailable the row says so — nothing is fil
 ## Code
 
 | branch | `main` |
-| HEAD | `a898fc4643cc` — docs(status): regenerate after the cancel check |
-| committed | 2026-11-01T11:40:06+03:00 |
-| working tree | dirty |
+| HEAD | `43a4d326a1e3` — feat(memory): advisory pre-run memory estimator (step 5) |
+| committed | 2026-11-01T12:43:43+03:00 |
+| working tree | clean |
 
 ## Tests
 
@@ -72,7 +72,7 @@ Model files on disk: **12** (44.92 GB); catalogued: **19** (see `docs/model_depe
 
 ComfyUI 0.15.0 · torch 2.9.1+rocm7.2.0.git7e1940d4 · cuda:0 AMD Radeon Graphics : native (cuda) · VRAM 95.3/96.0 GB free
 
-Unified memory (sysfs/proc, independent of the engine): vram used gb 1.84, gtt used gb 0.13, mem total gb 30.5, mem available gb 19.3
+Unified memory (sysfs/proc, independent of the engine): vram used gb 1.84, gtt used gb 0.13, mem total gb 30.5, mem available gb 19.4
 
 Disk free on the project volume: 709.5 GB of 936.8 GB.
 
