@@ -63,7 +63,8 @@ A workflow is allowed when **its id is listed or its category is listed**. Nothi
 `admin` cannot be restricted by this file — the owner must not be able to lock themselves out.
 
 Missing file → built-in defaults: admin and user unrestricted, child denied everything until a
-policy is written. Malformed file → same defaults plus a warning in the log; the child stays
+policy is written. The shipped `rbac.json` gives a child 55 of the 127 registered workflows
+(33 image-editing, 9 image-enhancement, 9 vision-language, plus 4 named generation workflows). Malformed file → same defaults plus a warning in the log; the child stays
 denied rather than accidentally trusted.
 
 ## Endpoint map
@@ -75,6 +76,8 @@ denied rather than accidentally trusted.
 | `/api/jobs*`, `/api/gallery`, `/api/outputs*`, `/api/events`, `/api/telemetry` | all users' data | own data | own data |
 | `/api/models`, `/api/models/catalog` | everything | everything | only the folders in the policy |
 | `/api/uploads` | ✓ | ✓ | per `allow_upload` |
+| `/api/me/usage` | own totals | own totals | own totals (counts, bytes, active jobs, the cap that applies) |
+| `/api/users/usage` | every account | 403 | 403 |
 | `/api/models/plan`, `/api/models/downloads`, `/api/models/{f}/delete`, `/api/settings` (write), `/api/users*`, `/api/engine/refresh` | ✓ | 403 | 403 |
 
 `GET /api/settings` is admin-only (it exposes engine and paths). `/api/auth/me` returns

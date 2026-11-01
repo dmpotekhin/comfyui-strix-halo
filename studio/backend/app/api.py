@@ -328,6 +328,29 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         return sum(1 for u in state.db.list_users()
                    if u["role"] == "admin" and not u["disabled"] and u["id"] != exclude)
 
+    @app.get("/api/me/usage")
+    async def my_usage(user: Principal = Depends(get_current_user)) -> dict[str, Any]:
+        """How much this account has produced, and how much of its job budget is in use.
+
+        Read-only and always scoped to the caller: there is no query parameter to look at
+        somebody else. Admins get the household-wide view from ``GET /api/users/usage``."""
+        data = state.db.usage_for(user.id)
+        data["limits"] = {"max_active_jobs": _active_job_limit(user),
+                          "active_jobs": state.db.active_jobs_for(user.id),
+                          "upload": state.rbac.may_upload(user.role)}
+        return data
+
+    @app.get("/api/users/usage")
+    async def accounts_usage(admin: Principal = Depends(require_admin)) -> dict[str, Any]:
+        """Per-account totals for the household admin screen (same numbers as /api/me/usage)."""
+        rows = []
+        for u in state.db.list_users():
+            data = state.db.usage_for(u["id"])
+            data.update({"username": u["username"], "role": u["role"],
+                         "disabled": bool(u["disabled"])})
+            rows.append(data)
+        return {"users": rows}
+
     @app.get("/api/users")
     async def list_accounts(admin: Principal = Depends(require_admin)) -> dict[str, Any]:
         users = state.db.list_users()

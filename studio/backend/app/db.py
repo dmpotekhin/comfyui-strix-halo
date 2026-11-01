@@ -513,6 +513,40 @@ class Database:
         return int(row["c"]) if row else 0
 
     # -- events -----------------------------------------------------------------------
+    def usage_for(self, user_id: str) -> dict[str, Any]:
+        """What one account has produced so far. Read-only aggregates, no schema change.
+
+        The household view needs an honest answer to "how much of this machine is mine?", and
+        the admin needs the same number per member. ``size`` is NULL for rows written before
+        outputs recorded it, so the byte total uses COALESCE rather than dropping those rows
+        from the count — a wrong total is worse than an approximate one, and the count says
+        how many files it covers.
+        """
+        with self._lock:
+            job_rows = self._conn.execute(
+                "SELECT status, COUNT(*) AS c FROM jobs WHERE user_id=? GROUP BY status",
+                (user_id,)).fetchall()
+            out_row = self._conn.execute(
+                "SELECT COUNT(*) AS c, COALESCE(SUM(size), 0) AS b,"
+                " MAX(created_at) AS last FROM outputs WHERE user_id=?",
+                (user_id,)).fetchone()
+            kind_rows = self._conn.execute(
+                "SELECT kind, COUNT(*) AS c FROM outputs WHERE user_id=? GROUP BY kind",
+                (user_id,)).fetchall()
+            last_job = self._conn.execute(
+                "SELECT MAX(created_at) AS last FROM jobs WHERE user_id=?",
+                (user_id,)).fetchone()
+        by_status = {r["status"]: int(r["c"]) for r in job_rows}
+        return {
+            "user_id": user_id,
+            "jobs": {"total": sum(by_status.values()), "by_status": by_status,
+                     "last_at": last_job["last"] if last_job else None},
+            "outputs": {"count": int(out_row["c"]) if out_row else 0,
+                        "bytes": int(out_row["b"] or 0) if out_row else 0,
+                        "by_kind": {r["kind"]: int(r["c"]) for r in kind_rows},
+                        "last_at": out_row["last"] if out_row else None},
+        }
+
     def log_event(self, message: str, *, job_id: str | None = None,
                   level: str = "info", user_id: str = "") -> None:
         with self._lock:
