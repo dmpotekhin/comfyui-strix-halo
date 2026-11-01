@@ -11,7 +11,9 @@ mean "may drive the GPU". Everything that decides *who* is asking lives here:
 * CSRF — a per-session token, returned to the SPA by ``GET /api/auth/me`` and required in the
   ``X-CSRF-Token`` header on every unsafe method. Server-side session cookies plus ``SameSite=Lax``
   already block most cross-site posts; this stops the rest;
-* roles — ``admin`` and ``user``. Admin-only surfaces are wired in ``api.py`` via ``require_admin``.
+* roles — ``admin``, ``user`` and ``child``. This module decides *who you are*; what a role may
+  actually run is data, in ``app/rbac.py`` + ``studio/registry/rbac.json``. Admin-only surfaces
+  are wired in ``api.py`` via ``require_admin``; child restrictions are enforced per route.
 
 The first admin is created from the command line (``python -m app.auth adduser ...``) so that no
 unauthenticated HTTP request can ever bootstrap an account.
@@ -43,7 +45,8 @@ SESSION_COOKIE = "studio_session"
 CSRF_COOKIE = "studio_csrf"
 CSRF_HEADER = "x-csrf-token"
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
-ROLES = ("admin", "user")
+#: The role list lives with the policy so there is exactly one definition to extend.
+from .rbac import ROLES  # noqa: E402  (kept next to its use, re-exported for callers)
 MIN_PASSWORD_LEN = 8
 
 _USERNAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,31}$")

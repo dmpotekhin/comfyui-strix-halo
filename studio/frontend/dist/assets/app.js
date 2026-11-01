@@ -111,7 +111,9 @@ function renderUserChip() {
   const nameEl = document.getElementById('user-name');
   if (nameEl && user) {
     nameEl.textContent = user.display_name || user.username;
-    nameEl.title = user.is_admin ? 'administrator' : 'member';
+    // The label is a hint, not a permission: the API refuses what the role may not do anyway.
+    nameEl.title = user.is_admin ? 'administrator'
+      : auth.isRestricted() ? 'limited profile' : 'member';
   }
 }
 
@@ -309,10 +311,10 @@ function paramField(p, value, inputs) {
       `<option value="${esc(i.name)}" ${i.name === val ? 'selected' : ''}>${esc(i.name)} (${fmtBytes(i.size)})</option>`).join('');
     return `<div class="field"><label for="p-${esc(p.key)}">${esc(p.label)}${p.required ? ' *' : ''}</label>
       <select ${common}>${opts || '<option value="">— no images in input folder —</option>'}</select>
-      <div class="row" style="margin-top:6px">
+      ${auth.canUpload() ? `<div class="row" style="margin-top:6px">
         <input type="file" accept="image/png,image/jpeg,image/webp" data-upload="${esc(p.key)}"
                style="flex:1;font-size:11px;padding:4px">
-      </div>${hint}${p.alpha_warning ? '' : ''}</div>`;
+      </div>` : ''}${hint}${p.alpha_warning ? '' : ''}</div>`;
   }
   if (p.type === 'seed') {
     return `<div class="field"><label for="p-${esc(p.key)}">${esc(p.label)}</label>
@@ -413,6 +415,11 @@ async function viewRun(id) {
   form.querySelectorAll('[data-upload]').forEach((inp) => inp.addEventListener('change', async () => {
     const file = inp.files?.[0];
     if (!file) return;
+    if (!auth.canUpload()) {           // the API would answer 403; say so before the upload starts
+      toast('uploads are disabled for this account', true);
+      inp.value = '';
+      return;
+    }
     inp.disabled = true;
     try {
       const res = await api.upload(file);

@@ -58,19 +58,29 @@ const put = (path, body) => request(path, { method: 'PUT', body: JSON.stringify(
 const patch = (path, body) => request(path, { method: 'PATCH', body: JSON.stringify(body) });
 const del = (path) => request(path, { method: 'DELETE' });
 
+let currentCaps = null;
+
 export const auth = {
   current: () => currentUser,
   isAdmin: () => !!currentUser?.is_admin,
+  /** What this account may do, as described by the server. Cosmetic only: every route re-checks. */
+  capabilities: () => currentCaps,
+  canUpload: () => currentCaps ? !!currentCaps.upload : true,
+  maxActiveJobs: () => currentCaps?.max_active_jobs ?? null,
+  /** True when the account is limited to a named set (a child profile): the UI should say so. */
+  isRestricted: () => !!currentCaps && !currentCaps.workflows?.all,
   /** Who am I? Also refreshes the CSRF token, which rotates with the session. */
   async me() {
     const body = await request('/api/auth/me');
     currentUser = body.user;
+    currentCaps = body.capabilities || null;
     csrfToken = body.user?.csrf_token || null;
     return currentUser;
   },
   async login(username, password) {
     const body = await post('/api/auth/login', { username, password });
     currentUser = body.user;
+    currentCaps = body.capabilities || null;
     csrfToken = body.user?.csrf_token || null;
     return currentUser;
   },

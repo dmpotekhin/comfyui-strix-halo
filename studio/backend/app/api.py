@@ -54,6 +54,7 @@ from .inventory import MODEL_EXTS, Inventory, analyze
 from .jobs import JobManager, QueueFull
 from .modelscan import canonical_folder, present, scan_host
 from .paths import Layout, PathNotAllowed, safe_join, sanitize_filename
+from .rbac import ADMIN, ROLES, Rbac
 from .registry import ERROR_CATEGORIES, ParamError, Registry, iter_categories
 from .schemas import HealthOut, JobCreate, ModelFileOut, WorkflowDetail, WorkflowSummary
 
@@ -117,6 +118,8 @@ class AppState:
             cache_dir=layout.downloads_cache,
             settings=settings,
         )
+        # Who may run what. Data, not code — see app/rbac.py for the semantics and the reasons.
+        self.rbac = Rbac.load(layout.registry / "rbac.json")
         self.last_env_refresh: float = 0.0
         self.env_error: str | None = None
         self._refresh_lock = asyncio.Lock()
@@ -275,7 +278,9 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         return {"user": {"id": user["id"], "username": user["username"],
                          "display_name": user["display_name"] or user["username"],
                          "role": user["role"], "is_admin": user["role"] == "admin",
-                         "csrf_token": csrf}}
+                         "csrf_token": csrf,
+                         # What this role may do. The UI renders from it; the routes enforce it.
+                         "capabilities": state.rbac.capabilities(user["role"])}}
 
     @app.post("/api/auth/logout")
     async def logout(response: Response, user: Principal = Depends(get_current_user)) -> dict[str, Any]:
@@ -288,6 +293,9 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
     async def whoami(user: Principal = Depends(get_current_user)) -> dict[str, Any]:
         return {
             "user": user.to_public(),
+            # Rendered by the SPA (which menu items, which workflows it offers); the API routes
+            # re-check independently, so hiding a button is never the security boundary.
+            "capabilities": state.rbac.capabilities(user.role),
             "server": {"version": __version__, "comfy_url": state.settings.comfy_url,
                        "lan_subnet": state.settings.lan_subnet,
                        "session_ttl_hours": state.settings.session_ttl_hours},
@@ -360,8 +368,8 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
             (wants_role is not None and wants_role != "admin") or wants_disabled)
         if losing_admin and _admin_count(exclude=user_id) == 0:
             raise HTTPException(422, "at least one enabled admin must remain")
-        if wants_role is not None and wants_role not in ("admin", "user"):
-            raise HTTPException(422, "role must be 'admin' or 'user'")
+        if wants_role is not None and wants_role not in ROLES:
+            raise HTTPException(422, f"role must be one of: {', '.join(ROLES)}")
         fields: dict[str, Any] = {}
         if payload.get("display_name") is not None:
             fields["display_name"] = str(payload["display_name"])[:80]
@@ -406,6 +414,24 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
 
     def _may_see_job(job: dict[str, Any], user: Principal) -> bool:
         return user.is_admin or (job.get("user_id") or "") == user.id
+
+    def _workflow_for(user: Principal, workflow_id: str) -> Any:
+        """The definition, if this role may use it; otherwise the standard "not allowed" answer.
+
+        A restricted role gets 403 on a workflow it knows about and 404 on one that does not
+        exist, so a child account cannot enumerate the studio's whole library by id. The check
+        is here — not in the SPA — because the SPA is a convenience, not a boundary.
+        """
+        wf = state.registry.defs.get(workflow_id)
+        if wf is None:
+            raise HTTPException(404, f"unknown workflow: {workflow_id}")
+        if not state.rbac.may_run(user.role, wf.id, getattr(wf, "category", None)):
+            raise HTTPException(403, f"workflow '{workflow_id}' is not available for your account")
+        return wf
+
+    def _active_job_limit(user: Principal) -> int:
+        """The tighter of the role's cap and the global ceiling (roles can only tighten)."""
+        return state.rbac.max_active_jobs(user.role, int(settings.max_user_active_jobs))
 
     def _media_allowed(type_: str, subfolder: str, filename: str, user: Principal) -> bool:
         """Is this media the caller's own?
@@ -523,14 +549,35 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         user: Principal = Depends(get_current_user),
     ) -> list[WorkflowSummary]:
         await state.refresh_environment()
-        return state.registry.list_summaries(
+        rows = state.registry.list_summaries(
             category=category, status=status, search=q, runnable_only=runnable_only
         )
+        allowed = state.rbac.visible_workflow_ids(user.role, state.registry.defs.values())
+        if allowed is None:
+            return rows
+        return [r for r in rows if r.id in allowed]
 
     @app.get("/api/workflows/categories")
     async def workflow_categories(user: Principal = Depends(get_current_user)) -> dict[str, Any]:
         await state.refresh_environment()
         stats = state.registry.stats()
+        allowed = state.rbac.visible_workflow_ids(user.role, state.registry.defs.values())
+        if allowed is not None:
+            # Count only what this role may actually open, otherwise the sidebar promises
+            # workflows the API will refuse with 403.
+            visible = {wid: state.registry.defs[wid] for wid in allowed
+                       if wid in state.registry.defs}
+            by_cat: dict[str, int] = {}
+            by_status: dict[str, int] = {}
+            for wf in visible.values():
+                cat = getattr(wf, "category", None) or "other"
+                by_cat[cat] = by_cat.get(cat, 0) + 1
+            for r in state.registry.list_summaries():
+                if r.id in visible:
+                    by_status[r.status] = by_status.get(r.status, 0) + 1
+            stats = {"by_category": by_cat, "by_status": by_status, "total": len(visible),
+                     "runnable": sum(1 for r in state.registry.list_summaries()
+                                     if r.id in visible and r.status == "runnable")}
         present = list(stats["by_category"])
         return {
             "categories": [
@@ -545,9 +592,7 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
     async def workflow_detail(workflow_id: str,
                               user: Principal = Depends(get_current_user)) -> WorkflowDetail:
         await state.refresh_environment()
-        wf = state.registry.defs.get(workflow_id)
-        if wf is None:
-            raise HTTPException(404, f"unknown workflow: {workflow_id}")
+        wf = _workflow_for(user, workflow_id)
         detail = state.registry.detail(wf)
         # Fill dynamic choice options from the live engine, on copies so the registry's
         # definitions stay immutable.
@@ -564,9 +609,7 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
     async def validate_workflow(workflow_id: str,
                                 user: Principal = Depends(get_current_user)) -> dict[str, Any]:
         await state.refresh_environment()
-        wf = state.registry.defs.get(workflow_id)
-        if wf is None:
-            raise HTTPException(404, "unknown workflow")
+        wf = _workflow_for(user, workflow_id)
         rep = state.registry.report(wf)
         return rep.model_dump()
 
@@ -579,9 +622,7 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         broken definition is a report, not an HTTP error. Use POST /api/jobs to run one.
         """
         await state.refresh_environment()
-        wf = state.registry.defs.get(workflow_id)
-        if wf is None:
-            raise HTTPException(404, f"unknown workflow: {workflow_id}")
+        wf = _workflow_for(user, workflow_id)
         return state.registry.check(wf).as_dict()
 
     # -- execution telemetry & benchmark ------------------------------------------------
@@ -663,8 +704,8 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
     @app.get("/api/workflows/{workflow_id}/stats")
     async def workflow_stats(workflow_id: str, since: datetime | None = None,
                              user: Principal = Depends(get_current_user)) -> dict[str, Any]:
+        wf = _workflow_for(user, workflow_id)
         rows = _telemetry(workflow_id, since=since, limit=5000, user=user)
-        wf = state.registry.defs.get(workflow_id)
         return {
             "workflow_id": workflow_id,
             "execution_type": str(getattr(wf, "execution", "") or "graph") if wf else None,
@@ -725,6 +766,16 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         user: Principal = Depends(get_current_user),
     ) -> dict[str, Any]:
         await state.refresh_environment()
+        # Role gate first: a workflow this account may not use must never reach the engine, and
+        # the answer is given before anything is written to the jobs table.
+        _workflow_for(user, payload.workflow_id)
+        limit = _active_job_limit(user)
+        mine = state.db.active_jobs_for(user.id)
+        if limit and mine >= limit:
+            state.db.log_event("blocked a submission over the role's active-job limit",
+                               level="warn", user_id=user.id)
+            raise HTTPException(429, f"you already have {mine} job(s) queued or running "
+                                    f"(limit {limit} for your account); wait for one to finish")
         token = payload.client_token or idempotency_key
         try:
             job, created = await state.jobs.submit(payload.workflow_id, payload.params, token,
@@ -792,6 +843,14 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         job = state.db.get_job(job_id)
         if job is None or not _may_see_job(job, user):
             raise HTTPException(404, "job not found")
+        # A rerun is a submission: same role gate and same active-job cap as POST /api/jobs.
+        # Otherwise a child could replay (say) an admin's WAN run that was later restricted.
+        _workflow_for(user, str(job["workflow_id"]))
+        limit = _active_job_limit(user)
+        mine = state.db.active_jobs_for(user.id)
+        if limit and mine >= limit:
+            raise HTTPException(429, f"you already have {mine} job(s) queued or running "
+                                    f"(limit {limit} for your account); wait for one to finish")
         try:
             # Always submitted as the caller: rerunning someone else's job (admin) must not
             # silently write the new files into the original owner's folder.
@@ -860,6 +919,8 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
     @app.post("/api/uploads")
     async def upload_image(file: UploadFile = File(...),
                            user: Principal = Depends(get_current_user)) -> dict[str, Any]:
+        if not state.rbac.may_upload(user.role):
+            raise HTTPException(403, "uploads are not enabled for your account")
         ext = Path(file.filename or "").suffix.lower()
         if ext not in state.settings.allowed_upload_ext:
             raise HTTPException(415, f"unsupported file type {ext or '(none)'}")
@@ -969,6 +1030,16 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         folders_out = totals["folders_detail"]
         total_bytes = totals["total_bytes"]
         file_count = totals["files"]
+        # A restricted role sees only the folders its policy names. The numbers below are
+        # recomputed from what is actually listed, so the badge never promises rows the page
+        # will not show. Enforcement of *usage* is elsewhere: a workflow that needs a hidden
+        # model simply will not be offered to this role at all.
+        allowed_folders = state.rbac.visible_folders(user.role)
+        if allowed_folders is not None:
+            files = [f for f in files if f.folder in allowed_folders]
+            folders_out = {k: v for k, v in folders_out.items() if k in allowed_folders}
+            total_bytes = sum(int(f.size_bytes or 0) for f in files)
+            file_count = len(files)
         # A ref is missing only when neither tree has the file.
         dupes = sorted({
             k[1] for k in usage
@@ -994,6 +1065,9 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         items = []
         for e in raw:
             if pack and e.get("pack") != pack:
+                continue
+            allowed_folders = state.rbac.visible_folders(user.role)
+            if allowed_folders is not None and str(e.get("folder")) not in allowed_folders:
                 continue
             installed = state.downloads.installed(str(e.get("folder")), str(e.get("file")))
             used_by = [w.id for w in state.registry.defs.values()
@@ -1108,8 +1182,10 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
     @app.post("/api/engine/refresh")
     async def refresh_engine(admin: Principal = Depends(require_admin)) -> dict[str, Any]:
         await state.refresh_environment(force=True)
+        # Re-read rbac.json too: editing the policy should not need a service restart.
+        state.rbac = Rbac.load(layout.registry / "rbac.json")
         return {"ok": True, "engine_error": state.env_error,
-                "workflows": state.registry.stats()}
+                "workflows": state.registry.stats(), "rbac": state.rbac.describe()["roles"]}
 
     # -- advisory memory estimator ----------------------------------------------------
     # Read-only by construction: these routes forecast, they never enqueue, cancel or touch the

@@ -132,6 +132,7 @@ means executed against the live engine, not "graph generated".
 | **Schema migrations** | **new** | empty→v3 and v1→v3 both migrate in tests |
 | **Unified benchmark ledger** | **new** (Improvement 3) | `GET /api/benchmarks` returns per-revision history |
 | **`docs/STATUS.md` generated** | **new** | numbers cannot drift again |
+| **Roles: admin / user / child** | **done 2026-11-01** | policy in `studio/registry/rbac.json`, enforced in the API; `docs/RBAC.md`; child denied by default |
 
 ### Phase 2 — Workflow intelligence
 | Deliverable | Order | Note |
@@ -155,6 +156,13 @@ Start with a plain index over the local docs + catalog + registry (no vector DB 
 justify it only if a measured search quality problem appears). External watchers (GitHub/HF) are
 **research features**: they must be off by default, explicit, and rate-limited, because they are the
 only egress in a local-first product.
+
+### Phase 4.5 — Multi-user (in progress)
+Shipped: three roles (`admin`/`user`/`child`), a data-driven workflow/model policy enforced server-side,
+per-role concurrent-job caps, capabilities in `/api/auth/me` (`docs/RBAC.md`).
+Still missing, in the order that pays off first: projects as a real entity (a child's work needs a
+container that is not a flat job list) → shared history with explicit publish → disk/generation quotas →
+per-model ACLs → denial audit log.
 
 ### Phase 5 — Production studio
 Order: separate Studio surfaces (TD-9, TD-15) → character consistency manager (the

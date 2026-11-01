@@ -33,6 +33,7 @@ python3 deploy/caddy/verify_lan_access.py   # 18 checks: auth, proxy, WebSocket,
 | Document | For |
 |----------|-----|
 | `docs/FAMILY_GUIDE.md` | the household — how to get in, what to click, what to do when it breaks (Russian) |
+| `docs/RBAC.md` | roles, the `rbac.json` policy, and which endpoint answers what for whom |
 | `docs/ADMIN_GUIDE.md` | day-to-day operation: start/stop, status, logs, users, tests, what not to touch |
 | `docs/comfyui_lan_access.md` | the LAN door in detail: design, setup, 18-check verification, troubleshooting |
 | `docs/remote_access_plan.md` | Phase C proposal: reaching the studio from outside the house (**plan only, not implemented**) |

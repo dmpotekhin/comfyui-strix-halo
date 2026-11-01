@@ -1,0 +1,38 @@
+{
+  "_comment": [
+    "Who may run what. Read by app/rbac.py at startup and by POST /api/engine/refresh.",
+    "Semantics: a workflow is allowed when its id is listed OR its category is listed.",
+    "A role that is absent from this file gets nothing; admin cannot be restricted here.",
+    "Model folders restrict what /api/models, /api/models/catalog and the gallery show;",
+    "deleting a model, downloading one and changing settings stay admin-only in the routes.",
+    "max_active_jobs can only tighten the global STUDIO_MAX_USER_ACTIVE_JOBS ceiling."
+  ],
+  "version": 1,
+  "roles": {
+    "user": {
+      "all_workflows": true,
+      "all_models": true,
+      "allow_upload": true,
+      "max_active_jobs": 3
+    },
+    "child": {
+      "categories": ["image-editing", "image-enhancement", "vision-language"],
+      "workflows": ["format-square", "format-portrait", "format-landscape", "style-anime"],
+      "model_folders": [
+        "checkpoints",
+        "vae",
+        "upscale_models",
+        "text_encoders",
+        "clip_vision",
+        "vision-models",
+        "vlm-models",
+        "whisper-models",
+        "host:studio/tools/vision-models",
+        "host:studio/tools/vlm-models",
+        "host:studio/tools/whisper-models"
+      ],
+      "allow_upload": true,
+      "max_active_jobs": 1
+    }
+  }
+}
