@@ -1,41 +1,41 @@
 # STATUS — generated, do not hand-edit
 
-Regenerated: 2026-11-01 01:13 MSK by `python3 studio/tools/gen_status.py`.
+Regenerated: 2026-11-01 10:17 MSK by `python3 studio/tools/gen_status.py`.
 Every number below is computed from the working tree, from pytest artefacts, or from a
 live engine query. If a source is unavailable the row says so — nothing is filled in.
 
 ## Code
 
 | branch | `main` |
-| HEAD | `fbf732e76ba0` — docs(telemetry): record the real migration path (v1 → 3) and the pre-v3 backup |
-| committed | 2026-11-01T01:13:03+03:00 |
+| HEAD | `07dc086c6ca9` — docs(telemetry): quote the ledger payload, including the sample counts |
+| committed | 2026-11-01T01:14:18+03:00 |
 | working tree | dirty |
 
 ## Tests
 
-Last recorded run: **PASS** — 474 tests, 0 failures, 0 errors, 0 skipped, 36.8 s (artefact written 2026-11-01 01:10 MSK).
+Last recorded run: **PASS** — 497 tests, 0 failures, 0 errors, 0 skipped, 48.9 s (artefact written 2026-11-01 10:17 MSK).
 
-Test functions declared in the tree: 415 (static count; parametrisation multiplies the executed total).
+Test functions declared in the tree: 435 (static count; parametrisation multiplies the executed total).
 
-Coverage: **75.2%** — 3674/4888 statements, 1214 missed (artefact written 2026-11-01 01:10 MSK).
+Coverage: **76.0%** — 4016/5287 statements, 1271 missed (artefact written 2026-11-01 10:17 MSK).
 
 | module | coverage | covered | statements | missed |
 |---|---:|---:|---:|---:|
 | `main.py` | 0.0% | 0 | 46 | 46 |
 | `downloads.py` | 32.1% | 75 | 234 | 159 |
 | `comfy.py` | 51.5% | 104 | 202 | 98 |
-| `hosttools.py` | 62.0% | 494 | 797 | 303 |
 | `auth.py` | 62.1% | 159 | 256 | 97 |
-| `jobs.py` | 70.7% | 396 | 560 | 164 |
-| `config.py` | 73.5% | 83 | 113 | 30 |
-| `registry.py` | 80.7% | 330 | 409 | 79 |
-| `api.py` | 83.9% | 533 | 635 | 102 |
+| `hosttools.py` | 62.6% | 575 | 918 | 343 |
+| `config.py` | 71.8% | 107 | 149 | 42 |
+| `jobs.py` | 78.5% | 617 | 786 | 169 |
+| `registry.py` | 81.4% | 333 | 409 | 76 |
+| `api.py` | 83.3% | 533 | 640 | 107 |
 | `modelscan.py` | 86.4% | 38 | 44 | 6 |
-| `db.py` | 86.9% | 331 | 381 | 50 |
+| `db.py` | 87.0% | 335 | 385 | 50 |
 | `paths.py` | 88.6% | 62 | 70 | 8 |
-| `graphcheck.py` | 90.5% | 190 | 210 | 20 |
+| `graphcheck.py` | 91.4% | 192 | 210 | 18 |
 | `media.py` | 91.7% | 22 | 24 | 2 |
-| `telemetry.py` | 92.1% | 292 | 317 | 25 |
+| `telemetry.py` | 92.3% | 299 | 324 | 25 |
 | `inventory.py` | 94.1% | 177 | 188 | 11 |
 | `schemas.py` | 95.1% | 175 | 184 | 9 |
 | `taxonomy.py` | 95.7% | 45 | 47 | 2 |
@@ -65,9 +65,9 @@ Model files on disk: **12** (44.92 GB); catalogued: **19** (see `docs/model_depe
 
 ComfyUI 0.15.0 · torch 2.9.1+rocm7.2.0.git7e1940d4 · cuda:0 AMD Radeon Graphics : native (cuda) · VRAM 88.7/96.0 GB free
 
-Unified memory (sysfs/proc, independent of the engine): vram used gb 8.76, gtt used gb 0.14, mem total gb 30.5, mem available gb 19.6
+Unified memory (sysfs/proc, independent of the engine): vram used gb 8.77, gtt used gb 0.11, mem total gb 30.5, mem available gb 18.8
 
-Disk free on the project volume: 709.9 GB of 936.8 GB.
+Disk free on the project volume: 709.8 GB of 936.8 GB.
 
 ---
 

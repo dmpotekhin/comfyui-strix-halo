@@ -120,7 +120,7 @@ project's own status docs and **not** re-measured here.
 | # | Feature | Status | Evidence |
 |---|---|---|---|
 | E4 | Character consistency manager | PARTIALLY_IMPLEMENTED | one `character-ipadapter` graph definition; no reference library, no LoRA-per-character, no seed registry |
-| E5 | Batch processing / queue | PARTIALLY_IMPLEMENTED | durable queue, per-user cap 3, cancel, rerun, ETA, positions (`jobs.py`, `config.py:46-52`); **no multi-item batch API**, single serial worker |
+| E5 | Batch processing / queue | PARTIALLY_IMPLEMENTED | durable queue, per-user cap 3, cancel, rerun, ETA, positions (`jobs.py`, `config.py:46-52`); **two execution lanes** since step 4 — GPU serial (`gpu_max_concurrent=1`, graph + chain whole) and CPU host pool (`cpu_host_workers=2`, `1`/`2`/`4`/`0`), one job table, one API; **no multi-item batch API** |
 | E6 | Separate Image / Video / Audio Studio screens | NOT_IMPLEMENTED | one generic form runner: `#/library` → `#/run/<id>` (`app.js:282`). Categories exist, screens do not |
 
 ## F. Content factory

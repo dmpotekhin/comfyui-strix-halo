@@ -243,6 +243,8 @@ Effort: **S** ≤ 1 day, **M** 2-3 days, **L** ≥ 1 week (one senior dev, this 
 | TD-20 | `cookie_secure: bool = False` | `config.py:37` | Correct for HTTP LAN, wrong the day TLS lands (Phase C plan) |
 | TD-21 | Inpaint requires an external mask; CFG locked at 1.0 | `implementation_status.md` #1, #2 | Product gap, documented, not debt — do not "fix" without a UI plan |
 | TD-26 | CSV export does not neutralise spreadsheet formulas | `benchmark.export_csv` (`csv.DictWriter`) | A message starting with `=`/`+`/`-`/`@` is quoted but still evaluated by Excel. Prefix with `'` when the cell starts with one of those |
+| TD-27 | A cancelled host job can hold its worker slot for ~10 s | `hosttools._terminate_group` (`_STOP_GRACE_S=5.0`, then a second 5 s wait after SIGKILL) | SIGTERM → 5 s grace → SIGKILL is deliberate (ffmpeg must flush), but the *slot* stays occupied while we wait. A tool that ignores SIGTERM therefore costs one of the two host workers for ten seconds. Watch `metrics.admission` / lane fill before considering a shorter grace |
+| TD-28 | A chain workflow owns the GPU lane for its whole run | `jobs.lane_of`, `chain_bind` in `registry.py` | Preprocessing (ONNX on CPU) runs while the GPU slot is already held, so a 3 s `sam_segment` idles the engine for 3 s. Accepted in step 4 on purpose; the fix is CHAIN-SPLIT (host phase in the CPU pool, graph phase on the GPU lane), a separate task |
 | TD-22 | Two parallel "stage" doc sets (`stage_r`, `stage_s`, `stage_t`, `net1`) | `docs/` 26 files | Historical value; archive older stages under `docs/archive/` at Phase 1 start |
 
 ---

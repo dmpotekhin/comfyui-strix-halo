@@ -206,3 +206,29 @@ does not neutralise spreadsheet formula prefixes (`=`, `+`, `-`, `@`) at the sta
 
 No HIGH or MEDIUM finding. Nothing here lets an unauthenticated LAN device read another account's runs,
 and no telemetry field can be used to write outside the database.
+
+---
+
+## 6. Addendum — Phase 1 step 4 (two execution lanes)
+
+The step adds concurrency, which is the usual way privilege bugs get in. Reviewed surface: the new
+dispatcher, per-job cancellation, process supervision in `hosttools`, atomic output-name reservation,
+and the two new snapshot keys.
+
+| Question | Mechanism | Verdict |
+|---|---|---|
+| Can a host job interrupt another user's render? | `cancel()` sends `POST /interrupt` only when the job **is** the GPU holder (`_gpu_holder == job_id`) **and** has a `prompt_id`; the check and the send run without an `await` between them, so the lane cannot change owner in between. Host jobs get a `threading.Event`, never an interrupt | **Met** — pinned by `test_cancelling_a_host_job_never_touches_the_engine` (engine interrupt counter stays 0) |
+| Can a cancel be aimed at another account's job? | `cancel(job_id, *, actor_id, is_admin)` keeps the pre-existing owner check before any lane logic; a non-owner gets the same answer as for a missing job | **Met** |
+| Can a cancelled host tool leave a process behind? | `_run_supervised` starts every child with `start_new_session=True` (own process group) and stops the **group**: SIGTERM → 5 s grace → SIGKILL; `_signal_group` swallows `ProcessLookupError`/`OSError` rather than signalling a stale pid | **Met** — `test_cancelling_a_host_job_kills_its_process_group` and `test_shutdown_stops_host_processes_and_leaves_no_orphans` assert `os.kill(pid, 0)` raises `ProcessLookupError` for the real child |
+| Command injection | every tool invocation is a fixed `argv` list (`shell=False`, the default); no `os.system`, `eval`, `exec`, `pickle` in the changed files | **Met** |
+| Can a form field read or write an arbitrary path? | `_require_source` resolves the path and requires it to be **inside** `PROJECT_ROOT`; output names are generated (`_unique_target(out_dir, stem, suffix)`), never taken from input; the job writes under an owner-scoped root | **Met** |
+| Can two workers overwrite each other, or a user's file? | reservation is `os.open(O_CREAT|O_EXCL|O_WRONLY, 0o644)` — the kernel decides; `O_EXCL` also fails on an existing dangling symlink; placeholders are removed on failure **and** on cancellation (`_release_reservations(keep=False)`), kept only on success | **Met** — `test_unique_target_reserves_the_name_atomically`, `test_two_threads_never_pick_the_same_output_name` |
+| Can a client raise the GPU limit and co-locate two models in VRAM? | `gpu_max_concurrent` is **not** in `EDITABLE_FIELDS`: `PUT /api/settings` ignores it and now writes a `warn` event naming the refusal; `enforce_safety_rails()` clamps a config/env value to 1 at load with the original number in the note | **Met** — `test_gpu_limit_cannot_be_raised` |
+| Does the new SQL write anything unsafe? | the only change in `db.py` is `integrity_check()` running a constant `PRAGMA integrity_check` | **Met** |
+| Do the new snapshot fields widen visibility? | `lanes`, `host_running`, `host_peak`, `host_workers`, `gpu_max_concurrent` go through the same `snapshot(user_id=…)` scope as before; no new endpoint | **Met** |
+| Is the memory threshold presented as a guarantee? | documented as a **soft admission threshold**; a failed probe is stored as `None` ("could not read"), never as 0 and never as "plenty" | **Met** |
+
+Residual, recorded rather than fixed: a cancelled host job may occupy its worker slot for up to
+~10 s while the process group is stopped (TD-27); chain workflows hold the GPU slot for their whole
+run, including the CPU preprocessing phase (TD-28, by decision in step 4). TD-26 is unchanged.
+No HIGH or MEDIUM finding in this step.
