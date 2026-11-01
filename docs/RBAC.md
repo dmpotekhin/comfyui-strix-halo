@@ -39,7 +39,7 @@ Read at startup and on `POST /api/engine/refresh`, so changing it does not need 
   "roles": {
     "user":  { "all_workflows": true, "all_models": true, "allow_upload": true, "max_active_jobs": 3 },
     "child": {
-      "categories": ["image-editing", "image-enhancement", "vision-language"],
+      "categories": ["image-editing", "enhancement", "vision-language"],
       "workflows": ["format-square", "style-anime"],
       "model_folders": ["checkpoints", "vae", "upscale_models"],
       "allow_upload": true,
@@ -65,8 +65,10 @@ A workflow is allowed when **its id is listed or its category is listed**. Nothi
 `admin` cannot be restricted by this file — the owner must not be able to lock themselves out.
 
 Missing file → built-in defaults: admin and user unrestricted, child denied everything until a
-policy is written. The shipped `rbac.json` gives a child 55 of the 127 registered workflows
-(33 image-editing, 9 image-enhancement, 9 vision-language, plus 4 named generation workflows),
+policy is written. Categories are the *canonical* ones (a workflow file may still say
+`image-enhancement`; the schema rewrites it to `enhancement`, and the policy loader applies the
+same alias table, so either spelling matches). The shipped `rbac.json` gives a child 55 of the 127
+registered workflows (33 image-editing, 9 enhancement, 9 vision-language, plus 4 named generation workflows),
 one active job at a time, 40 runs per day, and 10 GB of outputs; its model folders are exactly the ones those 55
 workflows reference (`checkpoints`, `upscale_models`, `vae`, `vision-models`, `vlm-models`),
 derived from the registry rather than guessed. Malformed file → same defaults plus a warning in the log; the child stays
