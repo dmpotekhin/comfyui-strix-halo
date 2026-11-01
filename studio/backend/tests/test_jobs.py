@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from pathlib import Path
 
 import pytest
 
@@ -121,6 +122,78 @@ def test_job_runs_to_completion(project, manager):
     assert fake.submitted[0]["5"]["inputs"]["seed"] == 5
     outs = db.list_outputs()
     assert len(outs) == 1 and outs[0]["filename"].endswith("test_00001_.png")
+    db.close()
+
+
+def test_the_graph_that_runs_writes_under_its_owner(project, manager):
+    """Guard the seam between the two graph builders.
+
+    ``submit`` rewrites ``filename_prefix`` to ``users/<id>/…`` and stores that graph with the
+    job, but the runner rebuilds the graph from the stored params right before posting it. If
+    that second build drops the prefix, the member's files land in the shared legacy folder —
+    and ``_media_allowed`` then refuses to serve them to the very member who asked for them:
+    the job reports completed while the gallery shows a broken image.
+    """
+    jm, db, fake = manager()
+    owner = "u_abc123"
+
+    async def main():
+        await jm.start()
+        job, _ = await jm.submit("test-turbo", {"prompt": "a fox"}, user_id=owner)
+        row = await asyncio.to_thread(wait_terminal, db, jid(job))
+        await jm.stop()
+        return row
+
+    row = asyncio.run(main())
+    assert row["status"] == "completed"
+    prefix = fake.submitted[0]["7"]["inputs"]["filename_prefix"]
+    assert prefix == f"users/{owner}/studio/test", prefix
+    # The folder must exist before the engine is asked to write into it, and it must belong to
+    # this side of the studio: the container runs as root, and a root-owned folder breaks the
+    # host tools that share it.
+    folder = project.layout.comfy_output / "users" / owner / "studio"
+    assert folder.is_dir(), folder
+    db.close()
+
+
+def test_host_job_reports_outputs_scoped_to_their_owner(project, manager, monkeypatch):
+    """The run view renders the job row, the gallery renders the outputs table — both must agree.
+
+    A host tool writes ``studio/x.wav`` relative to the folder it was given and reports it that
+    way. Storing that verbatim makes the run view request ``subfolder=studio``, which the media
+    route refuses for a member: the job says "completed" over a dead player.
+    """
+    from app import hosttools
+
+    project.write_workflow({
+        "id": "test-tts", "name": "Test TTS", "category": "audio-generation",
+        "description": "Synthetic host workflow used by the test suite.",
+        "output_kind": "audio", "host_tool": "piper_tts", "timeout_s": 60, "execution": "host",
+        "min_vram_gb": 0, "models": [], "test_status": "passed",
+        "parameters": [{"key": "text", "label": "Text", "type": "text", "default": "x"}],
+    })
+    jm, db, fake = manager()
+    owner = "u_host01"
+
+    def fake_run_host_tool(tool, params, root, **kw):
+        (Path(root) / "studio").mkdir(parents=True, exist_ok=True)
+        (Path(root) / "studio" / "x_00001_.wav").write_bytes(b"RIFF")
+        return [{"filename": "x_00001_.wav", "subfolder": "studio", "type": "output",
+                 "kind": "audio", "node": f"host:{tool}", "size": 4}]
+
+    monkeypatch.setattr(hosttools, "run_host_tool", fake_run_host_tool)
+
+    async def main():
+        await jm.start()
+        job, _ = await jm.submit("test-tts", {"text": "привет"}, user_id=owner)
+        row = await asyncio.to_thread(wait_terminal, db, jid(job))
+        await jm.stop()
+        return row
+
+    row = asyncio.run(main())
+    assert row["status"] == "completed"
+    assert row["outputs"][0]["subfolder"] == f"users/{owner}/studio"
+    assert db.list_outputs()[0]["subfolder"] == f"users/{owner}/studio"
     db.close()
 
 

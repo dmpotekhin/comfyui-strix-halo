@@ -870,6 +870,18 @@ class JobManager:
             self.db.finish_job(job_id, "failed", error=f"re-validation failed: {e}")
             return
 
+        # The rebuild above starts from the definition again, so the owner's output prefix that
+        # submit() stamped on the stored graph has to be re-applied here too. Without it the run
+        # writes into the shared folder, where /api/outputs refuses to serve the file back to the
+        # member who asked for it: the job completes and their gallery shows a broken image.
+        owner = job.get("user_id")
+        if owner:
+            # Reserve folders from the definition-relative prefixes, before they are rewritten.
+            _reserve_output_dirs(self.output_root, owner, graph)
+            prefix = f"users/{owner}"
+            graph = _prefix_outputs(graph, prefix)
+            resolved = _prefix_outputs(resolved, prefix)
+
         try:
             prompt_id = await self.client.submit(graph, client_id)
         except GraphRejected as e:
@@ -1020,8 +1032,11 @@ class JobManager:
             self.db.finish_job(job_id, "failed", error=f"{wf.host_tool} crashed: {e}")
             return None
 
-        self.db.add_outputs(job_id, job["workflow_id"],
-                            [_scope_output(o, owner) for o in outputs],
+        # Scope the paths once, here: the same list is stored on the job row (what the run view
+        # renders) and in the outputs table (what the gallery lists). Leaving it project-relative
+        # makes the run view ask for a shared-folder name and show a broken player.
+        outputs = [_scope_output(o, owner) for o in outputs]
+        self.db.add_outputs(job_id, job["workflow_id"], outputs,
                             prompt=str(resolved.get("text") or resolved.get("video") or ""),
                             params=resolved, user_id=owner)
         return resolved, outputs
@@ -1259,6 +1274,34 @@ def _prefix_outputs(node: Any, prefix: str) -> Any:
     if isinstance(node, list):
         return [_prefix_outputs(v, prefix) for v in node]
     return node
+
+
+def _reserve_output_dirs(output_root: Path, user_id: str, graph: dict[str, Any]) -> None:
+    """Create the folders the graph will write into, as the studio's own user.
+
+    The engine runs in a container as root, so whichever directory it is first to create stays
+    root-owned; the host tools on this side then cannot put a file beside their own outputs and
+    fail with "Permission denied" while reserving a name. Making the folders here — before the
+    graph is posted — keeps every folder writable by both halves of the studio.
+    """
+    if not user_id:
+        return
+    base = _scoped_root(output_root, user_id)
+    for node in graph.values():
+        if not isinstance(node, dict):
+            continue
+        prefix = (node.get("inputs") or {}).get("filename_prefix")
+        if not isinstance(prefix, str) or not prefix.strip():
+            continue
+        target = (base / prefix).parent
+        try:
+            target.resolve().relative_to(base.resolve())
+        except (OSError, ValueError):
+            continue  # a definition must not be able to point a folder outside the owner's tree
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            log.warning("cannot pre-create %s: %s", target, e)
 
 
 def _scoped_root(output_root: Path, user_id: str) -> Path:
