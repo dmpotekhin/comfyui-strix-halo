@@ -1,14 +1,14 @@
 # STATUS — generated, do not hand-edit
 
-Regenerated: 2026-11-01 19:13 MSK by `python3 studio/tools/gen_status.py`.
+Regenerated: 2026-11-01 20:35 MSK by `python3 studio/tools/gen_status.py`.
 Every number below is computed from the working tree, from pytest artefacts, or from a
 live engine query. If a source is unavailable the row says so — nothing is filled in.
 
 ## Code
 
 | branch | `main` |
-| HEAD | `11c1fd0a8d0b` — docs: label the E2E report by evidence level |
-| committed | 2026-11-01T18:43:26+03:00 |
+| HEAD | `7d0a9fcf2b9b` — docs: record the production smoke test as blocked on login |
+| committed | 2026-11-01T19:13:21+03:00 |
 | working tree | dirty |
 
 ## Tests
@@ -73,9 +73,9 @@ Model files on disk: **12** (44.92 GB); catalogued: **19** (see `docs/model_depe
 
 ComfyUI 0.15.0 · torch 2.9.1+rocm7.2.0.git7e1940d4 · cuda:0 AMD Radeon Graphics : native (cuda) · VRAM 88.7/96.0 GB free
 
-Unified memory (sysfs/proc, independent of the engine): vram used gb 9.01, gtt used gb 0.11, mem total gb 30.5, mem available gb 19.2
+Unified memory (sysfs/proc, independent of the engine): vram used gb 9.11, gtt used gb 0.13, mem total gb 30.5, mem available gb 19.3
 
-Disk free on the project volume: 709.3 GB of 936.8 GB.
+Disk free on the project volume: 709.4 GB of 936.8 GB.
 
 ## Cancelling a running host job
 
