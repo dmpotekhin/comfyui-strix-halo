@@ -317,6 +317,38 @@ def render(junit: Path | None = None, coverage: Path | None = None) -> str:
     A("")
     A(f"Disk free on the project volume: {disk.free / GB:.1f} GB of {disk.total / GB:.1f} GB.")
     A("")
+
+    A("## Cancelling a running host job")
+    A("")
+    art = ART / "cancel_check.json"
+    if art.exists():
+        try:
+            live = json.loads(art.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            live = None
+            A(f"Artefact unreadable: {exc}")
+        if live:
+            tl = live.get("timeline") or {}
+            A(f"Last controlled run: **{'PASS' if live.get('ok') else 'FAIL ' + str(live.get('failures'))}**, "
+              f"artefact written "
+              f"{datetime.fromtimestamp(art.stat().st_mtime).strftime('%Y-%m-%d %H:%M')}.")
+            A("")
+            A("| check | result | evidence |")
+            A("|---|---|---|")
+            for name, row in (live.get("checks") or {}).items():
+                detail = json.dumps(row.get("detail"), ensure_ascii=False)
+                if len(detail) > 110:
+                    detail = detail[:107] + "…"
+                A(f"| `{name}` | {'ok' if row.get('ok') else '**failed**'} | {detail} |")
+            A("")
+            A(f"Cancel latency {tl.get('cancel_ms')} ms; the host job was running "
+              f"{live.get('telemetry_host', {}).get('execution_ms')} ms of work when it was stopped.")
+        else:
+            A("Artefact present but empty.")
+    else:
+        A("**No artefact.** Run `../.venv/bin/python tools/queue_cancel_check.py "
+          "--json ../cache/audit/cancel_check.json` from `studio/backend`.")
+    A("")
     A("---")
     A("")
     A("Sources: `studio/cache/audit/junit.xml`, `studio/cache/audit/coverage.json`, "

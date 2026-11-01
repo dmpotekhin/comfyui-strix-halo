@@ -1,15 +1,15 @@
 # STATUS — generated, do not hand-edit
 
-Regenerated: 2026-11-01 10:17 MSK by `python3 studio/tools/gen_status.py`.
+Regenerated: 2026-11-01 11:39 MSK by `python3 studio/tools/gen_status.py`.
 Every number below is computed from the working tree, from pytest artefacts, or from a
 live engine query. If a source is unavailable the row says so — nothing is filled in.
 
 ## Code
 
 | branch | `main` |
-| HEAD | `07dc086c6ca9` — docs(telemetry): quote the ledger payload, including the sample counts |
-| committed | 2026-11-01T01:14:18+03:00 |
-| working tree | dirty |
+| HEAD | `71da14c8dea7` — test(queue): cancel a host job while it is actually running |
+| committed | 2026-11-01T11:39:59+03:00 |
+| working tree | clean |
 
 ## Tests
 
@@ -63,11 +63,30 @@ Model files on disk: **12** (44.92 GB); catalogued: **19** (see `docs/model_depe
 
 ## Live host
 
-ComfyUI 0.15.0 · torch 2.9.1+rocm7.2.0.git7e1940d4 · cuda:0 AMD Radeon Graphics : native (cuda) · VRAM 88.7/96.0 GB free
+ComfyUI 0.15.0 · torch 2.9.1+rocm7.2.0.git7e1940d4 · cuda:0 AMD Radeon Graphics : native (cuda) · VRAM 95.2/96.0 GB free
 
-Unified memory (sysfs/proc, independent of the engine): vram used gb 8.77, gtt used gb 0.11, mem total gb 30.5, mem available gb 18.8
+Unified memory (sysfs/proc, independent of the engine): vram used gb 1.87, gtt used gb 0.21, mem total gb 30.5, mem available gb 19.2
 
 Disk free on the project volume: 709.8 GB of 936.8 GB.
+
+## Cancelling a running host job
+
+Last controlled run: **PASS**, artefact written 2026-11-01 11:38.
+
+| check | result | evidence |
+|---|---|---|
+| `host_job_cancelled` | ok | {"status": "cancelled", "stage": "cancelling", "error": "Cancelled on request.", "cancel_returned": "running"} |
+| `host_children_gone` | ok | {"before": 1, "alive_after": {}, "new": {}} |
+| `gpu_still_running_after_cancel` | ok | {"status": "running", "stage": "running"} |
+| `cpu_slot_released` | ok | {"status": "completed", "queue_wait_ms": 2, "after_cancel_s": 0.13} |
+| `gpu_completed` | ok | {"status": "completed", "duration_s": 59.44, "outputs": 1} |
+| `comfy_never_interrupted` | ok | {"interrupt_calls": 0, "history_status": "success", "history_has_interrupt": false} |
+| `telemetry_records_cancellation` | ok | {"status": "cancelled", "lane": "cpu", "queue_wait_ms": 2, "execution_ms": 4190, "error_code": "CANCELLED"} |
+| `no_stuck_jobs` | ok | {"stuck": []} |
+| `db_integrity_ok` | ok | {"integrity": "ok"} |
+| `no_orphans_after_shutdown` | ok | {"checked": 1, "alive": []} |
+
+Cancel latency 162 ms; the host job was running 4190 ms of work when it was stopped.
 
 ---
 
