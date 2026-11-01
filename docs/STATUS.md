@@ -1,23 +1,23 @@
 # STATUS — generated, do not hand-edit
 
-Regenerated: 2026-11-01 17:05 MSK by `python3 studio/tools/gen_status.py`.
+Regenerated: 2026-11-01 17:17 MSK by `python3 studio/tools/gen_status.py`.
 Every number below is computed from the working tree, from pytest artefacts, or from a
 live engine query. If a source is unavailable the row says so — nothing is filled in.
 
 ## Code
 
 | branch | `main` |
-| HEAD | `c1d2f61c97dc` — fix(rbac): rerun cannot replay another account upload |
-| committed | 2026-11-01T16:43:28+03:00 |
-| working tree | dirty |
+| HEAD | `098a67a6df3e` — docs(acceptance): production is live, and what that proves |
+| committed | 2026-11-01T17:17:55+03:00 |
+| working tree | clean |
 
 ## Tests
 
-Last recorded run: **PASS** — 709 tests, 0 failures, 0 errors, 0 skipped, 87.2 s (artefact written 2026-11-01 17:05 MSK).
+Last recorded run: **PASS** — 709 tests, 0 failures, 0 errors, 0 skipped, 88.5 s (artefact written 2026-11-01 17:16 MSK).
 
 Test functions declared in the tree: 563 (static count; parametrisation multiplies the executed total).
 
-Coverage: **78.1%** — 4827/6184 statements, 1357 missed (artefact written 2026-11-01 17:05 MSK).
+Coverage: **78.1%** — 4827/6184 statements, 1357 missed (artefact written 2026-11-01 17:16 MSK).
 
 | module | coverage | covered | statements | missed |
 |---|---:|---:|---:|---:|
@@ -73,9 +73,9 @@ Model files on disk: **12** (44.92 GB); catalogued: **19** (see `docs/model_depe
 
 ComfyUI 0.15.0 · torch 2.9.1+rocm7.2.0.git7e1940d4 · cuda:0 AMD Radeon Graphics : native (cuda) · VRAM 95.2/96.0 GB free
 
-Unified memory (sysfs/proc, independent of the engine): vram used gb 1.79, gtt used gb 0.13, mem total gb 30.5, mem available gb 18.4
+Unified memory (sysfs/proc, independent of the engine): vram used gb 1.75, gtt used gb 0.12, mem total gb 30.5, mem available gb 19.3
 
-Disk free on the project volume: 709.5 GB of 936.8 GB.
+Disk free on the project volume: 709.3 GB of 936.8 GB.
 
 ## Cancelling a running host job
 
