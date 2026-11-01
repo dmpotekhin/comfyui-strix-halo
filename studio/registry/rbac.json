@@ -21,7 +21,7 @@
       "max_active_jobs": 3
     },
     "child": {
-      "categories": ["image-editing", "image-enhancement", "vision-language"],
+      "categories": ["image-editing", "enhancement", "vision-language"],
       "workflows": ["format-square", "format-portrait", "format-landscape", "style-anime"],
       "model_folders": ["checkpoints", "upscale_models", "vae", "vision-models", "vlm-models"],
       "allow_upload": true,

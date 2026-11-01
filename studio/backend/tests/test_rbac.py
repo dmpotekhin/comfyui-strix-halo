@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from app.rbac import Rbac
 from conftest import OTHER, second_client, seed_job, workflow_def, write_png
 
 KID = ("kid", "test-kid-Passw0rd!")
@@ -92,6 +93,59 @@ def test_unknown_role_is_denied_not_treated_as_user(tmp_path):
     assert rb.may_run("wizard", "anything") is False
     assert rb.may_run("", "anything") is False
     assert rb.may_run(None, "anything") is False
+
+
+# --- the shipped policy against the shipped workflows -------------------------------------
+# Every test above builds its own registry, so a category name that only exists in the policy
+# file stayed green while the server denied the whole family: the child was silently down to 46
+# of 127 workflows because the file said "image-enhancement" and the schema normalises that to
+# "enhancement". These read the two files the server actually loads.
+
+STUDIO_ROOT = Path(__file__).resolve().parents[2]
+REAL_WORKFLOWS = STUDIO_ROOT / "registry" / "workflows"
+REAL_POLICY = STUDIO_ROOT / "registry" / "rbac.json"
+
+
+def _real_registry():
+    from app.registry import Registry
+
+    reg = Registry(workflows_dir=REAL_WORKFLOWS)
+    reg.reload()
+    return reg
+
+
+def test_every_category_in_the_shipped_policy_exists_in_a_workflow():
+    present = {d.category for d in _real_registry().defs.values()}
+    pol = Rbac.load(REAL_POLICY)
+    for role in ("user", "child"):
+        unknown = pol.policy(role).categories - present
+        assert not unknown, f"{role} policy names categories no workflow uses: {sorted(unknown)}"
+
+
+def test_every_workflow_id_in_the_shipped_policy_exists():
+    defs = _real_registry().defs
+    pol = Rbac.load(REAL_POLICY)
+    for role in ("user", "child"):
+        unknown = pol.policy(role).workflows - set(defs)
+        assert not unknown, f"{role} policy names workflows that do not exist: {sorted(unknown)}"
+
+
+def test_the_child_sees_every_workflow_its_categories_name():
+    """The count is a consequence, the rule is the invariant: nothing in an allowed category may
+    be missing from the list the child is shown."""
+    defs = _real_registry().defs
+    pol = Rbac.load(REAL_POLICY)
+    child = pol.policy("child")
+    expected = {wid for wid, d in defs.items() if d.category in child.categories} | child.workflows
+    assert pol.visible_workflow_ids("child", defs.values()) == expected
+    assert len(expected) > len(child.workflows)      # the categories actually matched something
+
+
+def test_an_old_category_spelling_is_normalised(tmp_path):
+    p = tmp_path / "rbac.json"
+    p.write_text(json.dumps({"roles": {"child": {
+        "categories": ["image-enhancement"], "model_folders": ["checkpoints"]}}}))
+    assert Rbac.load(p).policy("child").categories == frozenset({"enhancement"})
 
 
 def test_policy_matches_ids_and_categories(tmp_path):

@@ -28,6 +28,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
+from app.schemas import canonical_category
+
 log = logging.getLogger(__name__)
 
 ADMIN = "admin"
@@ -125,7 +127,10 @@ def policy_from_dict(role: str, raw: dict[str, Any] | None) -> RolePolicy:
         role=role,
         all_workflows=bool(raw.get("all_workflows", False)),
         workflows=_str_set(raw.get("workflows")),
-        categories=_str_set(raw.get("categories")),
+        # Workflow categories are normalised at the schema boundary (``image-enhancement`` ->
+        # ``enhancement``), so a policy written with the older spelling would otherwise match
+        # nothing and quietly deny a whole family of workflows. Same alias table, both sides.
+        categories=frozenset(canonical_category(c) for c in _str_set(raw.get("categories"))),
         all_models=bool(raw.get("all_models", False)),
         model_folders=_str_set(raw.get("model_folders")),
         allow_upload=bool(raw.get("allow_upload", False)),
