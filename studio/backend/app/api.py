@@ -949,7 +949,10 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
             raise HTTPException(404, "job not found")
         # A rerun is a submission: same role gate and same active-job cap as POST /api/jobs.
         # Otherwise a child could replay (say) an admin's WAN run that was later restricted.
-        _workflow_for(user, str(job["workflow_id"]))
+        wf = _workflow_for(user, str(job["workflow_id"]))
+        # The stored params pass the same ownership rule: a job that predates the rule (or one an
+        # admin reruns) must not replay somebody else's upload into the caller's outputs.
+        _check_input_ownership(wf, job.get("params") or {}, user)
         _check_submission_budget(user)
         try:
             # Always submitted as the caller: rerunning someone else's job (admin) must not

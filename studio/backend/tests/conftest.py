@@ -245,10 +245,10 @@ def second_client(client, username: str, password: str):
 
 
 def seed_job(st, user_id: str, job_id: str, *, status: str = "queued",
-             workflow_id: str = "test-turbo") -> dict:
+             workflow_id: str = "test-turbo", params: dict | None = None) -> dict:
     """A job row that no worker will touch — deterministic starting point for ownership tests."""
     return st.db.create_job(job_id=job_id, workflow_id=workflow_id,
-                            workflow_name=f"Test workflow {workflow_id}", params={}, graph={},
+                            workflow_name=f"Test workflow {workflow_id}", params=params or {}, graph={},
                             client_id="test-client", client_token=None, status=status,
                             user_id=user_id)
 

@@ -487,6 +487,19 @@ def test_child_cannot_run_a_job_on_another_accounts_upload(kid):
     assert "someone else's upload" in events
 
 
+def test_rerun_cannot_replay_another_accounts_upload(kid):
+    """A stored job is a shortcut around the submit gate unless rerun checks it too."""
+    st, project = kid["state"], kid["project"]
+    _image_workflow(project, st)
+    admin_id = kid["admin"].users["dmitry"]["id"]
+    seed_job(st, kid["user"]["id"], "legacy-img", workflow_id="kid-img", status="completed",
+             params={"image": f"{admin_id}_private.png"})
+    r = kid["client"].post("/api/jobs/legacy-img/rerun")
+    assert r.status_code == 403, r.text
+    assert "not one of your uploads" in r.text
+    assert st.db.count_jobs() == 1
+
+
 def test_child_may_run_a_job_on_their_own_upload(kid):
     st, project = kid["state"], kid["project"]
     _image_workflow(project, st)

@@ -1,23 +1,23 @@
 # STATUS — generated, do not hand-edit
 
-Regenerated: 2026-11-01 16:41 MSK by `python3 studio/tools/gen_status.py`.
+Regenerated: 2026-11-01 16:43 MSK by `python3 studio/tools/gen_status.py`.
 Every number below is computed from the working tree, from pytest artefacts, or from a
 live engine query. If a source is unavailable the row says so — nothing is filled in.
 
 ## Code
 
 | branch | `main` |
-| HEAD | `2bbef4a96966` — docs(rbac): sessions, upload ownership, and the two known gaps |
-| committed | 2026-11-01T16:38:39+03:00 |
-| working tree | clean |
+| HEAD | `239f8a826451` — docs(status): regenerate from the run that just passed |
+| committed | 2026-11-01T16:41:30+03:00 |
+| working tree | dirty |
 
 ## Tests
 
-Last recorded run: **PASS** — 615 tests, 0 failures, 0 errors, 0 skipped, 67.2 s (artefact written 2026-11-01 16:41 MSK).
+Last recorded run: **PASS** — 616 tests, 0 failures, 0 errors, 0 skipped, 68.6 s (artefact written 2026-11-01 16:43 MSK).
 
-Test functions declared in the tree: 553 (static count; parametrisation multiplies the executed total).
+Test functions declared in the tree: 554 (static count; parametrisation multiplies the executed total).
 
-Coverage: **78.0%** — 4825/6182 statements, 1357 missed (artefact written 2026-11-01 16:41 MSK).
+Coverage: **78.1%** — 4826/6183 statements, 1357 missed (artefact written 2026-11-01 16:43 MSK).
 
 | module | coverage | covered | statements | missed |
 |---|---:|---:|---:|---:|
@@ -31,7 +31,7 @@ Coverage: **78.0%** — 4825/6182 statements, 1357 missed (artefact written 2026
 | `jobs.py` | 78.4% | 616 | 786 | 170 |
 | `router.py` | 79.7% | 63 | 79 | 16 |
 | `registry.py` | 81.9% | 335 | 409 | 74 |
-| `api.py` | 86.0% | 633 | 736 | 103 |
+| `api.py` | 86.0% | 634 | 737 | 103 |
 | `modelscan.py` | 86.4% | 38 | 44 | 6 |
 | `db.py` | 87.9% | 362 | 412 | 50 |
 | `paths.py` | 88.6% | 62 | 70 | 8 |
@@ -73,9 +73,9 @@ Model files on disk: **12** (44.92 GB); catalogued: **19** (see `docs/model_depe
 
 ComfyUI 0.15.0 · torch 2.9.1+rocm7.2.0.git7e1940d4 · cuda:0 AMD Radeon Graphics : native (cuda) · VRAM 95.2/96.0 GB free
 
-Unified memory (sysfs/proc, independent of the engine): vram used gb 1.83, gtt used gb 0.2, mem total gb 30.5, mem available gb 18.0
+Unified memory (sysfs/proc, independent of the engine): vram used gb 1.81, gtt used gb 0.2, mem total gb 30.5, mem available gb 17.6
 
-Disk free on the project volume: 709.3 GB of 936.8 GB.
+Disk free on the project volume: 709.5 GB of 936.8 GB.
 
 ## Cancelling a running host job
 
