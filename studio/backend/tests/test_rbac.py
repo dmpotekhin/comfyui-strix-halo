@@ -405,3 +405,129 @@ def test_unknown_role_is_rejected(kid):
     r = kid["admin"].patch(f"/api/users/{target}", json={"role": "wizard"})
     assert r.status_code == 422
     assert "child" in r.text        # the message lists the valid roles
+
+
+# ---------------------------------------------------------------------------------------
+# Stage 2 — probes for the ways *around* the front door
+#
+# The gates above guard the routes they were written for. These tests take the other way in:
+# another account's file, a path with `..` in it, a workflow parameter that names somebody
+# else's upload. Each one is a real request with a real session, because that is what an
+# attacker has.
+# ---------------------------------------------------------------------------------------
+
+IMG_GRAPH = {
+    "1": {"class_type": "LoadImage", "inputs": {"image": "input_a.png"}},
+    "2": {"class_type": "SaveImage", "inputs": {"filename_prefix": "studio/img",
+                                                "images": ["1", 0]}},
+}
+IMG_PARAMS = [
+    {"key": "image", "label": "Image", "type": "image", "required": True,
+     "default": "input_a.png", "options_from": {"class_type": "LoadImage", "input": "image"},
+     "bind": {"node": "1", "input": "image"}},
+]
+
+
+def _image_workflow(project, st, wf_id: str = "kid-img") -> None:
+    """An allowed workflow whose only parameter is a source image."""
+    project.write_workflow(workflow_def(wf_id, category="image-editing", models=[],
+                                        graph=IMG_GRAPH, parameters=IMG_PARAMS))
+    st.registry.reload()
+
+
+def test_child_cannot_read_another_accounts_output(kid):
+    st, project = kid["state"], kid["project"]
+    me = kid["user"]["id"]
+    admin_id = kid["admin"].users["dmitry"]["id"]
+    mine = project.layout.comfy_output / "users" / me / "mine.png"
+    theirs = project.layout.comfy_output / "users" / admin_id / "theirs.png"
+    for f, blob in ((mine, b"\x89PNG\r\n\x1a\nmine"), (theirs, b"\x89PNG\r\n\x1a\nsecret")):
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_bytes(blob)
+
+    c = kid["client"]
+    assert c.get("/api/outputs/mine.png", params={"subfolder": f"users/{me}"}).status_code == 200
+    r = c.get("/api/outputs/theirs.png", params={"subfolder": f"users/{admin_id}"})
+    assert r.status_code == 404, r.text
+    assert b"secret" not in r.content
+    assert st.db.count_jobs() == 0
+
+
+def test_output_subfolder_cannot_be_walked_aside(kid, tmp_path):
+    """`..` and encoded separators must not turn an owned prefix into a key to the tree."""
+    project = kid["project"]
+    me = kid["user"]["id"]
+    admin_id = kid["admin"].users["dmitry"]["id"]
+    theirs = project.layout.comfy_output / "users" / admin_id / "theirs.png"
+    theirs.parent.mkdir(parents=True, exist_ok=True)
+    theirs.write_bytes(b"\x89PNG\r\n\x1a\nsecret")
+
+    c = kid["client"]
+    for sub in (f"users/{me}/../{admin_id}", f"users/{me}/../../users/{admin_id}",
+                f"users/{me}%2F..%2F{admin_id}", f"users/{me}/%2e%2e/{admin_id}"):
+        r = c.get("/api/outputs/theirs.png", params={"subfolder": sub})
+        assert r.status_code == 404, (sub, r.status_code)
+        assert b"secret" not in r.content
+
+
+def test_child_cannot_run_a_job_on_another_accounts_upload(kid):
+    """The output gate stops reads, not this: a job would load the file server-side and hand
+    the result, rendered, to the caller."""
+    st, project = kid["state"], kid["project"]
+    _image_workflow(project, st)
+    admin_id = kid["admin"].users["dmitry"]["id"]
+
+    r = kid["client"].post("/api/jobs", json={"workflow_id": "kid-img",
+                                              "params": {"image": f"{admin_id}_private.png"}})
+    assert r.status_code == 403, r.text
+    assert "not one of your uploads" in r.text
+    assert st.db.count_jobs() == 0
+
+    events = kid["admin"].get("/api/events", params={"limit": 20}).text
+    assert "someone else's upload" in events
+
+
+def test_child_may_run_a_job_on_their_own_upload(kid):
+    st, project = kid["state"], kid["project"]
+    _image_workflow(project, st)
+    r = kid["client"].post("/api/jobs", json={"workflow_id": "kid-img",
+                                              "params": {"image": f"{kid['user']['id']}_cat.png"}})
+    # The fixture's node info lists a single input file, so validation refuses the name — the
+    # point is that it is *not* the ownership refusal that stopped it.
+    assert "not one of your uploads" not in r.text
+    assert r.status_code in (200, 202, 422), r.text
+
+
+def test_admin_is_not_limited_to_its_own_uploads(kid):
+    st, project = kid["state"], kid["project"]
+    _image_workflow(project, st)
+    r = kid["admin"].post("/api/jobs", json={"workflow_id": "kid-img",
+                                             "params": {"image": "legacy_upload.png"}})
+    assert "not one of your uploads" not in r.text
+
+
+def test_rerun_cannot_bypass_the_storage_allowance(kid):
+    st = kid["state"]
+    install_policy(kid["project"], st, policy_doc(max_active_jobs=5, max_output_gb=0.001))
+    seed_job(st, kid["user"]["id"], "kid-big", workflow_id="kid-edit", status="completed")
+    st.db.add_outputs("kid-big", "kid-edit",
+                      [{"filename": "big.png", "kind": "image", "size": 4_000_000}],
+                      user_id=kid["user"]["id"])
+    r = kid["client"].post("/api/jobs/kid-big/rerun")
+    assert r.status_code == 429
+    assert "storage limit" in r.text
+    assert st.db.count_jobs() == 1
+
+
+def test_telemetry_and_usage_show_only_the_child(kid):
+    st = kid["state"]
+    admin_id = kid["admin"].users["dmitry"]["id"]
+    for job_id, owner in (("admin-run-2", admin_id), ("kid-run-2", kid["user"]["id"])):
+        seed_job(st, owner, job_id, status="completed")
+        st.db.record_telemetry({"job_id": job_id, "workflow_id": "kid-edit",
+                                "status": "completed", "execution_ms": 1000})
+    runs = kid["client"].get("/api/telemetry/runs").json()["runs"]
+    assert {r["job_id"] for r in runs} == {"kid-run-2"}
+    usage = kid["client"].get("/api/me/usage").json()
+    assert usage["jobs"]["total"] == 1
+    assert kid["admin"].get("/api/telemetry/runs").json()["count"] >= 2

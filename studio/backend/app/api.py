@@ -535,6 +535,27 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
             return bool(parts) and parts[-1].startswith(f"{user.id}_")
         return len(parts) >= 3 and parts[0] == "users" and parts[1] == user.id
 
+    def _check_input_ownership(wf: Any, params: dict[str, Any], user: Principal) -> None:
+        """A job may only read uploads that belong to the caller.
+
+        ``/api/outputs`` stops one account from *reading* another's files, but a workflow with
+        an image parameter is a second way in: the job loads the file server-side and the result
+        lands in the caller's own outputs. So the picker is filtered for display and the value is
+        checked again on submit — the same rule both times, ``_media_allowed``.
+        """
+        if user.is_admin:
+            return
+        for p in wf.parameters:
+            if p.type != "image":
+                continue
+            value = params.get(p.key, p.default)
+            if not isinstance(value, str) or not value.strip():
+                continue
+            if not _media_allowed("input", "", value, user):
+                state.db.log_event("blocked a job that referenced someone else's upload",
+                                   level="warn", user_id=user.id)
+                raise HTTPException(403, f"image '{p.key}' is not one of your uploads")
+
     # -- lifecycle --------------------------------------------------------------------
     @app.on_event("startup")
     async def _startup() -> None:
@@ -686,6 +707,10 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
             q = p.model_copy()
             if q.type == "choice" and not q.options:
                 q.options = state.registry.resolved_options(q)
+            if q.type == "image" and q.options and not user.is_admin:
+                # The engine lists every file in the input folder, including other accounts'
+                # uploads. The child's picker must show only what they may actually run.
+                q.options = [o for o in q.options if _media_allowed("input", "", o, user)]
             params.append(q)
         detail.parameters = params
         return detail
@@ -853,7 +878,8 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         await state.refresh_environment()
         # Role gate first: a workflow this account may not use must never reach the engine, and
         # the answer is given before anything is written to the jobs table.
-        _workflow_for(user, payload.workflow_id)
+        wf = _workflow_for(user, payload.workflow_id)
+        _check_input_ownership(wf, payload.params, user)
         _check_submission_budget(user)
         token = payload.client_token or idempotency_key
         try:
@@ -871,8 +897,7 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         out = state.jobs.job_out(job)
         warnings: list[str] = []
         checks: dict[str, Any] | None = None
-        wf = state.registry.defs.get(payload.workflow_id)
-        if wf is not None and created:
+        if created:
             warnings = state.registry.preflight(wf, payload.params)
             preflight = state.jobs.check_of(job["id"])
             if preflight is not None:
