@@ -59,7 +59,9 @@ h2 { font-size: var(--step-2); }
 h3 { font-size: var(--step-1); }
 
 /* ---- shell ---------------------------------------------------------------------- */
-.shell { display: grid; grid-template-columns: 216px 1fr; min-height: 100vh; }
+/* minmax(0, 1fr): a wide child (the sources table is nowrap) must scroll inside itself
+   instead of stretching the whole shell past the viewport. */
+.shell { display: grid; grid-template-columns: 216px minmax(0, 1fr); min-height: 100vh; }
 
 .sidebar {
   background: var(--bg-raised);
@@ -86,7 +88,7 @@ h3 { font-size: var(--step-1); }
 
 .sidebar-foot { margin-top: auto; padding: 12px 8px 0; border-top: 1px solid var(--line); color: var(--fg-dim); font-size: 11px; }
 
-.main { padding: 28px 32px 64px; max-width: 1240px; }
+.main { padding: 28px 32px 64px; max-width: 1240px; min-width: 0; }
 
 .page-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--gap); margin-bottom: 20px; flex-wrap: wrap; }
 .page-head p { margin: 4px 0 0; color: var(--fg-muted); }
@@ -159,6 +161,11 @@ pre { background: var(--bg); border: 1px solid var(--line); border-radius: var(-
 .dim { color: var(--fg-dim); }
 .num { font-variant-numeric: tabular-nums; }
 .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* A nested row inside the toolbar made the URL field jump to the right and pushed the button
+   onto a third line; the form gets its own line and stable input widths. */
+.add-source { margin: 4px 0 14px; }
+.add-source input[type="url"] { flex: 1 1 320px; min-width: 0; }
+.add-source input[type="text"] { flex: 0 1 220px; min-width: 0; }
 .spacer { flex: 1; }
 .empty { padding: 40px 16px; text-align: center; color: var(--fg-dim); }
 
@@ -248,3 +255,64 @@ figure audio{margin:0}
 .user-chip #logout{cursor:pointer;text-decoration:none;border-bottom:1px dotted currentColor}
 .user-chip #logout:hover{color:var(--fg)}
 
+/* --- Workflow Studio: create/import, validation result, my workflows --------- */
+.mine-block{margin-bottom:26px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.mine-block .card-head h2{margin:0 0 4px}
+.wf-actions{flex-wrap:wrap;gap:6px;margin-top:10px}
+.wf-card.mine{border-color:rgba(94,234,169,.22)}
+.drop{border:1px dashed var(--line);border-radius:9px;padding:16px;text-align:center;font-size:12px;
+  color:var(--fg-muted);background:rgba(255,255,255,.015)}
+.drop.over{border-color:var(--accent);background:rgba(94,234,169,.07);color:var(--fg)}
+.drop input[type=file]{margin-top:8px;font-size:11px;color:var(--fg-muted)}
+.preview{margin-top:10px}
+.preview summary{cursor:pointer;font-size:11px;color:var(--fg-muted)}
+.preview pre{max-height:260px;overflow:auto;font-size:11px;line-height:1.45;background:#0d1117;
+  border:1px solid var(--line);border-radius:8px;padding:10px;margin-top:8px}
+.vlist{margin:8px 0 0;padding-left:18px;font-size:12px;line-height:1.7}
+.vlist .bad{color:var(--danger)}
+.vlist .warn{color:#e8c07a}
+.file-chip{padding:6px 0;border-bottom:1px solid var(--line);font-size:12px}
+.file-chip:last-child{border-bottom:0}
+.editor-slot{margin-top:12px;border-top:1px solid var(--line);padding-top:12px}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.5}
+.hint{font-size:11px;color:var(--fg-muted);margin-top:6px;line-height:1.6}
+html[data-theme="light"] .preview pre{background:#f6f7f9}
+
+
+/* ---- smart workflow discovery --------------------------------------------------- */
+.disc-filters { align-items: center; }
+.disc-filters input[type="search"] { min-width: 180px; flex: 1 1 180px; }
+.disc-filters select { min-width: 120px; }
+/* The secondary filters live in a wrapper so a phone can collapse them; on a desktop the wrapper
+   is transparent to layout, so the toolbar looks exactly as it did. */
+.disc-extra { display: contents; }
+.disc-filters-toggle { display: none; }
+.disc-error { margin-bottom: 12px; }
+.disc-error .mono { font-family: var(--mono, ui-monospace, monospace); font-size: 11px; }
+.disc-card { display: flex; flex-direction: column; gap: 8px; }
+.disc-card h3 { margin: 0; font-size: 14px; }
+.disc-media { aspect-ratio: 16 / 10; border-radius: 8px; overflow: hidden; background: #0b0f14;
+  display: grid; place-items: center; font-size: 11px; }
+.disc-media img { width: 100%; height: 100%; object-fit: cover; }
+.disc-card .hint { font-size: 11px; }
+.disc-card .editor-slot { margin-top: 6px; }
+#d-selection { margin: 6px 0 12px; }
+.sources-table { display: block; overflow-x: auto; white-space: nowrap; }
+.sources-table thead, .sources-table tbody { display: table; width: 100%; }
+@media (max-width: 700px) {
+  /* A column flex container turns `flex: 1 1 180px` into a 180px-tall search box — the
+     control was eating a third of the phone screen. Keep the row and let the controls pair up. */
+  .disc-filters { flex-direction: row; }
+  .disc-filters input[type="search"] { flex: 1 1 100%; min-width: 0; max-width: none; height: auto; }
+  .disc-filters select, .disc-filters input[type="text"], .disc-filters button {
+    flex: 1 1 45%; min-width: 0; width: auto;
+  }
+  /* On a phone the six secondary controls stayed on screen and pushed the results below the fold.
+     They now sit behind one button; the search box, the Search button and the counts stay put. */
+  .disc-extra { display: none; }
+  .disc-filters.is-open .disc-extra {
+    display: flex; flex-direction: column; gap: 10px; flex: 1 1 100%;
+  }
+  .disc-filters.is-open .disc-extra > * { width: 100%; max-width: none; }
+  .disc-filters-toggle { display: inline-flex; align-items: center; gap: 6px; }
+}

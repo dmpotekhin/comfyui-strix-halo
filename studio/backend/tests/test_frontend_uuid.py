@@ -27,7 +27,9 @@ ASSETS = FRONTEND / "dist" / "assets"
 APP_JS = ASSETS / "app.js"
 API_JS = ASSETS / "api.js"
 INDEX_HTML = FRONTEND / "dist" / "index.html"
-JS_TESTS = FRONTEND / "tests" / "uuid.test.mjs"
+# The whole directory, not one file: the discovery-screen guards live in discovery-ui.test.mjs
+# and must fail the main gate too, not just a manual `node --test`.
+JS_TESTS = FRONTEND / "tests"
 
 
 def _strip_comments(source: str) -> str:
@@ -99,6 +101,7 @@ def test_the_frontend_uuid_suite_passes():
         capture_output=True, text=True, timeout=120, cwd=str(ROOT),
     )
     assert proc.returncode == 0, f"node --test failed:\n{proc.stdout}\n{proc.stderr}"
+    assert "discovery" in proc.stdout, "the discovery-screen guards did not run"
     # node exits 0 on an empty suite too, so the counts are checked rather than the code alone.
     # Both summary styles are accepted: "# pass 7" (older) and "i pass 7" (node 26).
     counts = {key: int(n) for key, n in re.findall(r"\b(tests|pass|fail|skipped) (\d+)", proc.stdout)}

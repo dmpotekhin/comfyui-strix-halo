@@ -87,6 +87,9 @@ const mediaUrl = (o) =>
 const ROUTES = [
   ['dashboard', 'Dashboard', '◈'],
   ['library', 'Workflows', '▤'],
+  ['discover', 'Find workflows', '⌕'],
+  ['sources', 'Sources', '⇄', true],   // admin-only: it edits sources and starts syncs
+  ['create', 'Create workflow', '✚'],
   ['jobs', 'Jobs', '≣'],
   ['gallery', 'Gallery', '▦'],
   ['models', 'Models', '▣'],
@@ -266,15 +269,51 @@ async function viewDashboard() {
 let libState = { q: '', category: '', status: '' };
 
 async function viewLibrary() {
-  const [cats, list] = await Promise.all([
+  const [cats, list, studio] = await Promise.all([
     api.categories(),
     api.workflows(libState),
+    api.studio.catalog().catch(() => ({ mine: [], editor: null })),
   ]);
+  const mine = studio.mine || [];
 
   view.innerHTML = `
     <div class="page-head"><div><h1>Workflow library</h1>
       <p>Every entry is a graph validated against the live engine before it is offered.</p></div>
       <div class="dim">${list.length} shown / ${cats.total} total</div></div>
+
+    <section class="mine-block">
+      <div class="card-head"><h2>My workflows</h2>
+        <a class="btn small" href="#/create">Create or import →</a></div>
+      <p class="dim">Made in Studio or imported from ComfyUI. Edit them in ComfyUI's editor,
+        then bring the file back — Studio checks it and keeps the new revision.</p>
+      <div class="wf-grid">
+        ${mine.map((w) => `
+          <article class="wf-card mine" data-studio="${esc(w.id)}">
+            <div class="row" style="justify-content:space-between">
+              <h3>${esc(w.name)}</h3>
+              <span class="badge ${w.runnable ? 'ok' : 'warn'}">${w.runnable ? 'runnable' : 'needs work'}</span>
+            </div>
+            <div class="desc">${esc(w.description || 'No description')}</div>
+            <div class="meta">
+              <span class="tag">${esc(w.format)} format</span>
+              ${w.category ? `<span class="tag">${esc(w.category)}</span>` : ''}
+              <span class="tag">${w.node_count} nodes</span>
+              <span class="dim">edited ${esc((w.updated_at || '').slice(0, 16).replace('T', ' '))}</span>
+            </div>
+            <div class="row wf-actions">
+              <button class="small primary" data-act="run">Run</button>
+              <button class="small" data-act="open">Open in ComfyUI</button>
+              <button class="small" data-act="edit">Edit</button>
+              <button class="small ghost" data-act="duplicate">Duplicate</button>
+              <button class="small ghost" data-act="validate">Validate</button>
+              <a class="btn small ghost" href="${esc(api.studio.exportUrl(w.id, 'ui'))}" data-act="export-ui">UI JSON</a>
+              <a class="btn small ghost" href="${esc(api.studio.exportUrl(w.id, 'api'))}" data-act="export-api">API JSON</a>
+              <button class="small danger" data-act="delete">Delete</button>
+            </div>
+            <div class="editor-slot" hidden></div>
+          </article>`).join('') || `<div class="empty">Nothing yet — generate one or import a file.</div>`}
+      </div>
+    </section>
 
     <div class="toolbar">
       <input type="search" id="q" placeholder="Search name, description, tag…" value="${esc(libState.q)}">
@@ -316,9 +355,352 @@ async function viewLibrary() {
   });
   document.getElementById('cat').addEventListener('change', (e) => { libState.category = e.target.value; rerender(); });
   document.getElementById('status').addEventListener('change', (e) => { libState.status = e.target.value; rerender(); });
-  view.querySelectorAll('.wf-card').forEach((card) => {
+  view.querySelectorAll('.wf-card:not(.mine)').forEach((card) => {
     card.addEventListener('click', () => { location.hash = `#/run/${card.dataset.id}`; });
   });
+
+  view.querySelectorAll('[data-studio]').forEach((card) => {
+    const id = card.dataset.studio;
+    card.querySelectorAll('[data-act]').forEach((el) => {
+      const act = el.dataset.act;
+      if (act === 'export-ui' || act === 'export-api') return;   // plain download links
+      el.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const slot = card.querySelector('.editor-slot');
+        try {
+          if (act === 'run') {
+            location.hash = `#/run/${id}`;
+          } else if (act === 'open') {
+            const opened = await api.studio.openInEditor(id);
+            toast(`Handed to ComfyUI as ${opened.filename}`);
+            window.open(opened.editor_url, '_blank', 'noopener');
+          } else if (act === 'validate') {
+            const full = await api.studio.get(id);
+            slot.hidden = false;
+            slot.innerHTML = validationPanel(
+              await api.studio.validateJson({ data: full.ui, filename: `${full.name}.json` }));
+          } else if (act === 'duplicate') {
+            const copy = await api.studio.duplicate(id);
+            toast(`Duplicated as “${copy.record?.name}”`);
+            route();
+          } else if (act === 'delete') {
+            if (!confirm('Delete this workflow? Revisions stay on disk until the next cleanup.')) return;
+            await api.studio.remove(id);
+            toast('Deleted');
+            route();
+          } else if (act === 'edit') {
+            const full = await api.studio.get(id);
+            slot.hidden = false;
+            slot.innerHTML = `
+              <div class="field"><label>Name</label><input id="ed-name" value="${esc(full.name)}"></div>
+              <div class="field"><label>Description</label>
+                <input id="ed-desc" value="${esc(full.description || '')}"></div>
+              <div class="field"><label>UI workflow JSON</label>
+                <textarea id="ed-json" rows="10" class="mono">${esc(JSON.stringify(full.ui, null, 2))}</textarea>
+                <div class="hint">The graph itself is edited in ComfyUI — this is for inspecting or
+                  pasting a corrected file.</div></div>
+              <div class="row"><button class="primary small" id="ed-save">Save changes</button>
+                <button class="small ghost" id="ed-cancel">Close</button></div>`;
+            slot.querySelector('#ed-cancel').addEventListener('click', () => { slot.hidden = true; });
+            slot.querySelector('#ed-save').addEventListener('click', async (ev) => {
+              ev.target.disabled = true;
+              try {
+                await api.studio.update(id, {
+                  name: slot.querySelector('#ed-name').value,
+                  description: slot.querySelector('#ed-desc').value,
+                  json_text: slot.querySelector('#ed-json').value,
+                });
+                toast('Saved as a new revision');
+                route();
+              } catch (err) { toast(err.message, true); ev.target.disabled = false; }
+            });
+          }
+        } catch (err) {
+          toast(err.message, true);
+        }
+      });
+    });
+  });
+}
+
+/* ------------------------------------------------------------ create workflow */
+
+const studioState = { generated: null, imported: null, filename: null, savedId: null };
+
+function validationPanel(report) {
+  if (!report) return '';
+  const list = (items, cls) => (items && items.length
+    ? `<ul class="vlist">${items.map((i) => `<li class="${cls}">${esc(i)}</li>`).join('')}</ul>` : '');
+  const models = (report.missing_models || []).map((m) => `${m.folder ? m.folder + '/' : ''}${m.file}`);
+  return `
+    <div class="card">
+      <div class="card-head"><h3>Check result</h3>
+        <div class="row">
+          <span class="badge ${report.valid ? 'ok' : 'danger'}">${report.valid ? 'valid' : 'invalid'}</span>
+          <span class="badge ${report.runnable ? 'ok' : 'warn'}">${report.runnable ? 'runnable' : 'not runnable yet'}</span>
+          <span class="tag">${esc(report.format || 'unknown')} format</span>
+        </div>
+      </div>
+      ${list(report.errors, 'bad')}
+      ${list(report.warnings, 'warn')}
+      ${list((report.missing_nodes || []).map((n) => `missing node class: ${n}`), 'bad')}
+      ${list(models.map((m) => `missing model: ${m}`), 'bad')}
+      ${list((report.missing_custom_nodes || []).map((n) => `missing custom node: ${n}`), 'bad')}
+      ${report.valid ? `<div class="hint">Nothing blocks this workflow: its nodes exist, its links resolve,
+        and every model it names is installed. It has <strong>not</strong> been run.</div>` : ''}
+    </div>`;
+}
+
+const jsonPreview = (obj) => `<details class="preview"><summary>Workflow JSON (${Object.keys(obj || {}).length ? 'non-empty' : 'empty'})</summary>
+  <pre>${esc(JSON.stringify(obj || {}, null, 2).slice(0, 6000))}</pre></details>`;
+
+function download(obj, name) {
+  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+async function viewCreate() {
+  const [tpl, editor] = await Promise.all([
+    api.studio.templates(),
+    api.studio.editorFiles().catch(() => ({ files: [] })),
+  ]);
+  const usable = tpl.templates.filter((t) => t.available);
+  const blocked = tpl.templates.filter((t) => !t.available);
+
+  view.innerHTML = `
+    <div class="page-head"><div><h1>Create workflow</h1>
+      <p>Studio writes and checks the graph; ComfyUI is where you edit it. Nothing is run from here.</p></div>
+      <a class="btn small" href="http://${location.hostname}:8189/" target="_blank" rel="noopener">Open ComfyUI Editor ↗</a>
+    </div>
+
+    <div class="grid cols-2">
+      <section class="card">
+        <div class="card-head"><h2>Option 1 — Create with generator</h2></div>
+        <div class="field">
+          <label for="gen-desc">Describe the workflow</label>
+          <textarea id="gen-desc" rows="3" placeholder="Create an image generation workflow using SDXL Turbo"></textarea>
+          <div class="hint">Plain words. The generator matches them to a template it can actually build
+            on this machine — it never invents a node.</div>
+        </div>
+        <div class="field">
+          <label for="gen-tpl">Template</label>
+          <select id="gen-tpl">
+            <option value="">Pick automatically</option>
+            ${usable.map((t) => `<option value="${esc(t.id)}">${esc(t.name)} — ${esc(t.category)}</option>`).join('')}
+          </select>
+          ${blocked.length ? `<div class="hint">Not buildable here: ${blocked.map((t) =>
+            `<strong>${esc(t.name)}</strong> (${esc(t.reason)})`).join('; ')}</div>` : ''}
+        </div>
+        <div class="field"><label for="gen-name">Save as</label>
+          <input id="gen-name" placeholder="optional name"></div>
+        <div class="row"><button class="primary" id="gen-run">Generate workflow</button></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h2>Option 2 — Import existing workflow</h2></div>
+        <div class="field">
+          <label for="imp-file">JSON file</label>
+          <div id="imp-drop" class="drop">Drop a workflow .json here, or
+            <input type="file" id="imp-file" accept=".json,application/json"></div>
+          <div class="hint">Both formats are accepted: a UI workflow (the file ComfyUI exports for
+            editing) and an API prompt. Nothing is queued automatically.</div>
+        </div>
+        <div class="field"><label for="imp-name">Save as</label>
+          <input id="imp-name" placeholder="defaults to the file name"></div>
+        <div class="row"><button class="primary" id="imp-check">Check file</button></div>
+      </section>
+    </div>
+
+    <div id="gen-result"></div>
+    <div id="imp-result"></div>
+
+    <section class="card">
+      <div class="card-head"><h2>Finished in ComfyUI? Bring it back</h2>
+        <button class="small ghost" id="editor-refresh">Refresh</button></div>
+      <p class="dim">Files in ComfyUI's own workflow folder. Save in the editor, then import here —
+        Studio validates it and keeps a copy under your account.</p>
+      <div id="editor-list">${editor.files.length
+        ? editor.files.map((f) => `<div class="row file-chip"><span>${esc(f.name)}</span>
+            <span class="dim">${fmtBytes(f.size)}${f.mine ? ' · from Studio' : ''}</span>
+            <button class="small" data-import="${esc(f.name)}">Import into Studio</button></div>`).join('')
+        : `<div class="empty">No saved workflows yet.</div>`}</div>
+    </section>`;
+
+  const resultBox = document.getElementById('gen-result');
+
+  const showGenerated = (data, savedId) => {
+    studioState.generated = data;
+    studioState.savedId = savedId || null;
+    resultBox.innerHTML = `
+      <div class="card">
+        <div class="card-head"><h3>${esc(data.name)}</h3>
+          <div class="row"><span class="tag">${esc(data.template_name || '')}</span>
+          <span class="tag">${esc(data.category || '')}</span>
+          <span class="tag">${(data.ui?.nodes || []).length} nodes</span></div></div>
+        <div class="row">
+          <button class="primary" id="gen-save">Save to Studio</button>
+          <button id="gen-open">Open in ComfyUI</button>
+          <button class="ghost" id="gen-dl-ui">Download UI JSON</button>
+          <button class="ghost" id="gen-dl-api">Download API JSON</button>
+          ${studioState.savedId ? `<a class="btn small" href="#/run/${esc(studioState.savedId)}">Run it →</a>` : ''}
+        </div>
+        ${jsonPreview(data.ui)}
+      </div>
+      ${validationPanel(data.validation)}`;
+
+    document.getElementById('gen-save').addEventListener('click', async (e) => {
+      e.target.disabled = true;
+      try {
+        const saved = await api.studio.generate({
+          description: document.getElementById('gen-desc').value,
+          template_id: data.template_id,
+          name: document.getElementById('gen-name').value || data.name,
+          save: true,
+        });
+        toast('Saved to your workflows');
+        showGenerated(saved, saved.record?.id);
+      } catch (err) { toast(err.message, true); e.target.disabled = false; }
+    });
+    document.getElementById('gen-open').addEventListener('click', async (e) => {
+      e.target.disabled = true;
+      try {
+        let id = studioState.savedId;
+        if (!id) {
+          const saved = await api.studio.generate({
+            description: document.getElementById('gen-desc').value,
+            template_id: data.template_id,
+            name: document.getElementById('gen-name').value || data.name,
+            save: true,
+          });
+          id = saved.record?.id;
+          studioState.savedId = id;
+        }
+        const opened = await api.studio.openInEditor(id);
+        toast(`Handed to ComfyUI as ${opened.filename}`);
+        window.open(opened.editor_url, '_blank', 'noopener');
+      } catch (err) { toast(err.message, true); }
+      e.target.disabled = false;
+    });
+    document.getElementById('gen-dl-ui').addEventListener('click',
+      () => download(studioState.generated.ui, `${studioState.generated.template_id}.ui.json`));
+    document.getElementById('gen-dl-api').addEventListener('click',
+      () => download(studioState.generated.api, `${studioState.generated.template_id}.api.json`));
+  };
+
+  document.getElementById('gen-run').addEventListener('click', async (e) => {
+    const description = document.getElementById('gen-desc').value.trim();
+    const template_id = document.getElementById('gen-tpl').value || undefined;
+    if (!description && !template_id) { toast('Describe the workflow first', true); return; }
+    e.target.disabled = true;
+    resultBox.innerHTML = '<div class="card dim">Building the graph from live node schemas…</div>';
+    try {
+      showGenerated(await api.studio.generate({ description, template_id }), null);
+    } catch (err) {
+      const missing = err.payload?.missing_models || [];
+      resultBox.innerHTML = `<div class="alert warn"><strong>Cannot build that here.</strong>
+        <div>${esc(err.message)}</div>${missing.length ? `<div class="hint">Missing: ${missing.map(esc).join(', ')}</div>` : ''}</div>`;
+    }
+    e.target.disabled = false;
+  });
+
+  /* ---- import ---- */
+  const impBox = document.getElementById('imp-result');
+  let importedText = null;
+
+  const showImported = (data, savedId) => {
+    studioState.imported = data;
+    // `/api/wf/validate` answers with the report itself, `/api/wf/import` nests it under
+    // `validation`; the card must not care which door the answer came through.
+    const report = data.validation || data;
+    impBox.innerHTML = `
+      <div class="card">
+        <div class="card-head"><h3>${esc(studioState.filename || 'workflow.json')}</h3>
+          <span class="tag">${esc(report.format || '')} format</span></div>
+        <div class="row">
+          ${report.valid ? `<button class="primary" id="imp-save">Save to Studio</button>` : ''}
+          ${savedId ? `<button id="imp-open">Open in ComfyUI</button>
+            <a class="btn small" href="#/run/${esc(savedId)}">Run it →</a>` : ''}
+        </div>
+        ${report.valid ? '' : `<div class="hint">Nothing is saved while the check reports errors.</div>`}
+      </div>
+      ${validationPanel(report)}`;
+    const saveBtn = document.getElementById('imp-save');
+    if (saveBtn) saveBtn.addEventListener('click', async (e) => {
+      e.target.disabled = true;
+      try {
+        const saved = await api.studio.importJson({
+          json_text: importedText,
+          filename: studioState.filename,
+          name: document.getElementById('imp-name').value || undefined,
+          save: true,
+        });
+        toast('Saved to your workflows');
+        showImported(saved, saved.record?.id);
+      } catch (err) { toast(err.message, true); e.target.disabled = false; }
+    });
+    const openBtn = document.getElementById('imp-open');
+    if (openBtn) openBtn.addEventListener('click', async () => {
+      try {
+        const opened = await api.studio.openInEditor(savedId);
+        toast(`Handed to ComfyUI as ${opened.filename}`);
+        window.open(opened.editor_url, '_blank', 'noopener');
+      } catch (err) { toast(err.message, true); }
+    });
+  };
+
+  const readFile = async (file) => {
+    studioState.filename = file.name;
+    importedText = await file.text();
+    try {
+      const result = await api.studio.validateJson({ json_text: importedText, filename: file.name });
+      showImported(result, null);
+    } catch (err) {
+      impBox.innerHTML = `<div class="alert danger"><strong>${esc(err.message)}</strong>
+        <div class="hint">A workflow file is JSON. If it came from another program, export it from
+        ComfyUI as a workflow first.</div></div>`;
+    }
+  };
+
+  const fileInput = document.getElementById('imp-file');
+  fileInput.addEventListener('change', (e) => { if (e.target.files[0]) readFile(e.target.files[0]); });
+  const drop = document.getElementById('imp-drop');
+  ['dragover', 'dragenter'].forEach((evt) => drop.addEventListener(evt, (e) => {
+    e.preventDefault(); drop.classList.add('over');
+  }));
+  ['dragleave', 'drop'].forEach((evt) => drop.addEventListener(evt, () => drop.classList.remove('over')));
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file) readFile(file);
+  });
+  document.getElementById('imp-check').addEventListener('click', () => {
+    if (!fileInput.files[0] && !importedText) { toast('Choose a file first', true); return; }
+    if (fileInput.files[0]) readFile(fileInput.files[0]);
+    else api.studio.validateJson({ json_text: importedText, filename: studioState.filename })
+      .then((r) => showImported(r, null)).catch((err) => toast(err.message, true));
+  });
+
+  /* ---- editor round-trip ---- */
+  const wireEditor = () => view.querySelectorAll('[data-import]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        const saved = await api.studio.importFromEditor({ filename: btn.dataset.import, save: true });
+        const label = saved.record?.name || btn.dataset.import;
+        toast(saved.updated ? `Updated ${label} — the previous version is kept` : `Imported ${label}`);
+        route();
+      } catch (err) {
+        toast(err.message, true);
+        btn.disabled = false;
+      }
+    });
+  });
+  wireEditor();
+  document.getElementById('editor-refresh').addEventListener('click', () => route());
 }
 
 /* ------------------------------------------------------------------ run */
@@ -732,9 +1114,536 @@ async function viewSettings() {
 
 /* ------------------------------------------------------------------ router */
 
+/* --------------------------------------------------- smart workflow discovery */
+
+const SOURCE_STATUS = {
+  ok: ['ok', 'reachable'],
+  partial: ['warn', 'partial'],
+  new: ['neutral', 'never synced'],
+  unknown: ['neutral', 'not checked'],
+  unreachable: ['danger', 'unreachable'],
+  error: ['danger', 'error'],
+  blocked: ['warn', 'rate limited'],
+  unsupported: ['neutral', 'not supported'],
+};
+
+const sourceBadge = (status) => {
+  const [cls, label] = SOURCE_STATUS[status] || ['neutral', status || 'unknown'];
+  return `<span class="badge ${cls}">${esc(label)}</span>`;
+};
+
+const COMPAT_BADGE = {
+  READY: ['ok', 'compatible'],
+  PARTIAL: ['warn', 'partly compatible'],
+  MISSING_MODELS: ['warn', 'models missing'],
+  MISSING_NODES: ['danger', 'custom nodes missing'],
+  INCOMPATIBLE: ['danger', 'incompatible'],
+  UNKNOWN: ['neutral', 'not checked'],
+};
+
+const compatBadge = (status) => {
+  const [cls, label] = COMPAT_BADGE[status] || COMPAT_BADGE.UNKNOWN;
+  return `<span class="badge ${cls}">${esc(label)}</span>`;
+};
+
+const discoverState = {
+  q: '', type: '', category: '', source: '', base_model: '',
+  compatible_only: false, scope: '', sort: 'relevance', offset: 0, limit: 12,
+  selected: [], result: null,
+  error: null,          // { status, head, said } from the last rejected search, or null
+  filtersOpen: null,    // null = follow the viewport; true/false = the user decided
+};
+
+const isNarrow = () => window.matchMedia('(max-width: 700px)').matches;
+
+/** Turn a rejected search into something a person can act on, without losing the screen. */
+function searchFailure(err) {
+  const status = (err && err.status) || 0;
+  const said = (err && err.message) || '';
+  const known = {
+    400: 'The search was rejected — check the filters and try again.',
+    401: 'Your session has expired. Reload the page and sign in again.',
+    403: 'You are not allowed to search this catalogue.',
+    429: 'Too many searches in a row. Wait a moment and try again.',
+    500: 'The server failed while searching. Nothing was lost.',
+    502: 'The server is not answering right now.',
+    503: 'The server is busy. Try again shortly.',
+  };
+  const head = known[status] || (status ? `The search failed (HTTP ${status}).` : 'The server could not be reached.');
+  return { status, head, said: said && said !== `HTTP ${status}` ? said : '' };
+}
+
+/** How many filters are on — shown on the toggle so a collapsed panel never hides state. */
+function activeFilterCount() {
+  return [discoverState.type, discoverState.category, discoverState.source, discoverState.base_model]
+    .filter(Boolean).length
+    + (discoverState.compatible_only ? 1 : 0)
+    + (discoverState.scope ? 1 : 0)
+    + (discoverState.sort !== 'relevance' ? 1 : 0);
+}
+
+function discoveryCard(item, favorites) {
+  const isFav = favorites.includes(item.id);
+  const reasons = (item.explain && item.explain.reasons) || [];
+  const stats = item.stats || {};
+  const popular = stats.downloadCount || stats.downloads || stats.likes || 0;
+  const picked = discoverState.selected.includes(item.id);
+  const compat = (item.compatibility && item.compatibility.status) || '';
+  return `
+    <article class="wf-card disc-card" data-id="${esc(item.id)}" data-local="${item.origin === 'local' ? '1' : ''}">
+      <div class="disc-media">${item.preview_url
+        ? `<img src="${esc(item.preview_url)}" alt="" loading="lazy">`
+        : `<span class="dim">no preview</span>`}</div>
+      <div class="row" style="justify-content:space-between">
+        <h3>${esc(item.title)}</h3>
+        <span class="row" style="gap:6px">${compat ? compatBadge(compat) : ''}${isFav ? '<span class="badge ok">★</span>' : ''}</span>
+      </div>
+      <div class="desc">${esc(item.description || 'No description')}</div>
+      <div class="meta">
+        <span class="tag">${esc(item.type)}</span>
+        ${item.workflow_format ? `<span class="tag">${esc(item.workflow_format)}</span>` : ''}
+        ${item.origin === 'local' ? '<span class="tag">local</span>' : `<span class="tag">${esc(item.source_id)}</span>`}
+        ${(item.categories || []).map((c) => `<span class="tag">${esc(c.name || c)}</span>`).join('')}
+        ${popular ? `<span class="tag">${esc(String(popular))} downloads</span>` : ''}
+      </div>
+      <div class="meta dim">
+        <span>${esc(item.author || 'unknown author')}</span>
+        <span>·</span>
+        <span>${esc(item.license || 'license unknown')}</span>
+        ${item.source_url ? `<span>·</span><a href="${esc(item.source_url)}" target="_blank" rel="noopener">source</a>` : ''}
+      </div>
+      ${reasons.length ? `<div class="hint">Why: ${esc(reasons.slice(0, 4).join('; '))}</div>` : ''}
+      <div class="row wf-actions">
+        ${item.origin === 'local'
+          /* A workflow of your own catalogue has no discovery record behind it: Analyze, Compare and
+             Favourite all answered "no such resource". Offer the catalogue instead of dead buttons. */
+          ? '<a class="btn small ghost" href="#/library">Open in the library</a>'
+          : `<button class="small" data-act="analyze" data-graph="${item.has_graph ? '1' : ''}">Analyze</button>
+             <button class="small ghost" data-act="pick">${picked ? 'Selected' : 'Compare'}</button>
+             ${item.has_graph ? '<button class="small primary" data-act="import">Import</button>' : ''}
+             ${item.has_graph ? '<button class="small" data-act="adapt">Adapt</button>' : ''}
+             <button class="small ghost" data-act="fav">${isFav ? 'Unfavourite' : 'Favourite'}</button>`}
+      </div>
+      <div class="editor-slot" hidden></div>
+    </article>`;
+}
+
+async function viewDiscover() {
+  const [status, sources, cats, favorites] = await Promise.all([
+    api.discovery.status(),
+    api.discovery.sources().catch(() => ({ sources: [] })),
+    api.categories().catch(() => ({ categories: [] })),
+    api.discovery.favorites().catch(() => ({ items: [] })),
+  ]);
+  let searchError = null;
+  try {
+    discoverState.result = await api.discovery.search({
+      query: discoverState.q,
+      type: discoverState.type || undefined,
+      category: discoverState.category || undefined,
+      source: discoverState.source || undefined,
+      base_model: discoverState.base_model,
+      compatible_only: discoverState.compatible_only,
+      local_only: discoverState.scope === 'local',
+      external_only: discoverState.scope === 'external',
+      sort: discoverState.sort,
+      limit: discoverState.limit,
+      offset: discoverState.offset,
+    });
+    discoverState.error = null;
+  } catch (err) {
+    // A rejected search must never take the page down: the last good result set stays on screen,
+    // every filter stays set, and the error appears next to the box with a retry.
+    searchError = discoverState.error = searchFailure(err);
+  }
+  const result = discoverState.result || { total: 0, results: [], notes: [] };
+  const filtersOpen = discoverState.filtersOpen === null ? !isNarrow() : discoverState.filtersOpen;
+  const activeFilters = activeFilterCount();
+  const favIds = (favorites.items || []).map((f) => f.id);
+  const total = result.total || 0;
+  const shown = (result.results || []).length;
+  const from = shown ? discoverState.offset + 1 : 0;
+  const to = discoverState.offset + shown;
+
+  view.innerHTML = `
+    <div class="page-head"><div><h1>Find a workflow</h1>
+      <p>Search the local catalogue and the sources that actually answer. Nothing is downloaded
+         until you import it, and nothing is imported without being checked.</p></div>
+      <div class="dim">${shown ? `${from}–${to} of ${total}` : `${total} found`}</div></div>
+
+    ${searchError ? `<div class="alert danger disc-error" role="alert">
+      <div class="row" style="justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">
+        <div>
+          <strong>${esc(searchError.head)}</strong>
+          ${searchError.said ? `<div class="mono dim">${esc(searchError.said)}</div>` : ''}
+          ${(result.results || []).length
+            ? '<div class="dim">Below are the results of the last search that worked. Your filters were kept.</div>'
+            : '<div class="dim">No results to show yet — fix the search and try again.</div>'}
+        </div>
+        <button class="small" id="d-retry">Try again</button>
+      </div></div>` : ''}
+
+    <div class="toolbar disc-filters${filtersOpen ? ' is-open' : ''}" id="d-filters">
+      <input type="search" id="d-q" placeholder="anime portrait, интерьер, upscale…"
+             value="${esc(discoverState.q)}">
+      <div class="disc-extra">
+      <select id="d-type">
+        <option value="">Any type</option>
+        ${['workflow', 'lora', 'checkpoint', 'reference'].map((t) =>
+          `<option value="${t}" ${discoverState.type === t ? 'selected' : ''}>${t}</option>`).join('')}
+      </select>
+      <select id="d-cat">
+        <option value="">Any category</option>
+        ${(cats.categories || []).map((c) =>
+          `<option value="${esc(c.id)}" ${discoverState.category === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}
+      </select>
+      <select id="d-src">
+        <option value="">Any source</option>
+        ${(sources.sources || []).map((s) =>
+          `<option value="${esc(s.source_id)}" ${discoverState.source === s.source_id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}
+      </select>
+      <input type="search" id="d-base" placeholder="base model" value="${esc(discoverState.base_model)}">
+      <label class="row dim" style="gap:6px"><input type="checkbox" id="d-compat"
+        ${discoverState.compatible_only ? 'checked' : ''}> compatible only</label>
+      <select id="d-scope">
+        <option value="">Local + external</option>
+        <option value="local" ${discoverState.scope === 'local' ? 'selected' : ''}>Local only</option>
+        <option value="external" ${discoverState.scope === 'external' ? 'selected' : ''}>External only</option>
+      </select>
+      <select id="d-sort">
+        <option value="relevance" ${discoverState.sort === 'relevance' ? 'selected' : ''}>By relevance</option>
+        <option value="popular" ${discoverState.sort === 'popular' ? 'selected' : ''}>By popularity</option>
+        ${['relevance', 'popular'].includes(discoverState.sort) ? '' :
+          `<option value="${esc(discoverState.sort)}" selected>${esc(discoverState.sort)} (not accepted)</option>`}
+      </select>
+      </div>
+      <button class="primary small" id="d-go">Search</button>
+      <button class="small ghost disc-filters-toggle" id="d-filters-toggle"
+              aria-expanded="${filtersOpen}" aria-controls="d-filters"
+              title="Show or hide the filters">Filters${activeFilters ? ` <span class="badge ok">${activeFilters}</span>` : ''}</button>
+    </div>
+
+    ${(result.notes || []).length
+      ? `<div class="alert info">${result.notes.map((n) => esc(n)).join('<br>')}</div>` : ''}
+    ${result.backend ? `<div class="hint">Ranking backend: ${esc(typeof result.backend === 'string' ? result.backend : (result.backend.model || 'unknown'))}${status.index && !status.index.semantic ? ' (hashed n-grams — no embedding model is installed, so this is not semantic search)' : ''}</div>` : ''}
+
+    <div class="row" id="d-selection" ${discoverState.selected.length ? '' : 'hidden'}>
+      <span class="dim">${discoverState.selected.length} selected for comparison</span>
+      <button class="small primary" id="d-compare">Compare</button>
+      <button class="small ghost" id="d-clear">Clear</button>
+    </div>
+
+    <div class="wf-grid">
+      ${(result.results || []).map((item) => discoveryCard(item, favIds)).join('')
+        || '<div class="empty">Nothing matched. Try a broader word, or turn off a filter.</div>'}
+    </div>
+
+    <div class="row" style="justify-content:center;margin-top:14px">
+      <button class="small" id="d-prev" ${discoverState.offset ? '' : 'disabled'}>← Previous</button>
+      <button class="small" id="d-next" ${to < total ? '' : 'disabled'}>Next →</button>
+    </div>
+    <div id="d-panel"></div>`;
+
+  const panel = document.getElementById('d-panel');
+  const rerender = () => route();
+  const apply = () => { discoverState.offset = 0; rerender(); };
+  const bind = (id, ev, fn) => document.getElementById(id)?.addEventListener(ev, fn);
+  bind('d-go', 'click', () => {
+    discoverState.q = document.getElementById('d-q').value.trim();
+    apply();
+  });
+  bind('d-q', 'keydown', (e) => { if (e.key === 'Enter') document.getElementById('d-go').click(); });
+  bind('d-type', 'change', (e) => { discoverState.type = e.target.value; apply(); });
+  bind('d-cat', 'change', (e) => { discoverState.category = e.target.value; apply(); });
+  bind('d-src', 'change', (e) => { discoverState.source = e.target.value; apply(); });
+  bind('d-base', 'change', (e) => { discoverState.base_model = e.target.value.trim(); apply(); });
+  bind('d-compat', 'change', (e) => { discoverState.compatible_only = e.target.checked; apply(); });
+  bind('d-scope', 'change', (e) => { discoverState.scope = e.target.value; apply(); });
+  bind('d-sort', 'change', (e) => { discoverState.sort = e.target.value; apply(); });
+  bind('d-retry', 'click', () => rerender());
+  // Collapsing the filters is a local, instant action: no refetch, no lost results, and the choice
+  // is remembered in discoverState so it survives every rerender.
+  bind('d-filters-toggle', 'click', () => {
+    const bar = document.getElementById('d-filters');
+    const toggle = document.getElementById('d-filters-toggle');
+    if (!bar || !toggle) return;
+    const open = !bar.classList.contains('is-open');
+    discoverState.filtersOpen = open;
+    bar.classList.toggle('is-open', open);
+    toggle.setAttribute('aria-expanded', String(open));
+  });
+  bind('d-prev', 'click', () => {
+    discoverState.offset = Math.max(0, discoverState.offset - discoverState.limit); rerender();
+  });
+  bind('d-next', 'click', () => { discoverState.offset += discoverState.limit; rerender(); });
+  bind('d-clear', 'click', () => { discoverState.selected = []; rerender(); });
+  bind('d-compare', 'click', async () => {
+    try {
+      const body = await api.discovery.compare(discoverState.selected);
+      panel.innerHTML = `
+        <section class="mine-block"><div class="card-head"><h2>Comparison</h2>
+          <button class="small ghost" id="cmp-close">Close</button></div>
+          <table><thead><tr><th>Resource</th><th>Nodes</th><th>Compatibility</th><th>Checkpoints / LoRAs</th></tr></thead>
+          <tbody>${(body.items || []).map((it) => `<tr>
+            <td>${esc(it.title)}</td><td>${it.node_count}</td>
+            <td>${compatBadge((it.compatibility || {}).status)}</td>
+            <td class="mono">${esc([...(it.checkpoints || []), ...(it.loras || [])].join(', ') || 'none')}</td>
+          </tr>`).join('')}</tbody></table>
+          <p class="dim">Easiest to run: <strong>${esc((body.verdict?.easiest_to_run || {}).title || '—')}</strong>
+             (${esc((body.verdict?.easiest_to_run || {}).why || '')})</p>
+          <p class="dim">Simplest graph: <strong>${esc((body.verdict?.simplest || {}).title || '—')}</strong>
+             (${esc((body.verdict?.simplest || {}).why || '')})</p>
+        </section>`;
+      panel.querySelector('#cmp-close').addEventListener('click', () => { panel.innerHTML = ''; });
+    } catch (err) { toast(err.message, true); }
+  });
+
+  view.querySelectorAll('.disc-card').forEach((card) => {
+    const id = card.dataset.id;
+    const slot = card.querySelector('.editor-slot');
+    card.querySelectorAll('[data-act]').forEach((el) => {
+      el.addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        const act = el.dataset.act;
+        try {
+          if (act === 'pick') {
+            const at = discoverState.selected.indexOf(id);
+            if (at >= 0) discoverState.selected.splice(at, 1);
+            else if (discoverState.selected.length >= 2) toast('Pick two at most', true);
+            else discoverState.selected.push(id);
+            rerender();
+          } else if (act === 'fav') {
+            if (favIds.includes(id)) await api.discovery.removeFavorite(id);
+            else await api.discovery.addFavorite(id);
+            rerender();
+          } else if (act === 'analyze') {
+            slot.hidden = false;
+            slot.innerHTML = '<div class="hint">Checking against the installed models and nodes…</div>';
+            const [detail, analysed] = await Promise.all([
+              api.discovery.resource(id),
+              el.dataset.graph ? api.discovery.analyze(id) : Promise.resolve(null),
+            ]);
+            const compat = ((analysed || detail).analysis || {}).compatibility || {};
+            const analysis = (analysed || detail).analysis || {};
+            slot.innerHTML = validationPanel({
+              valid: compat.status === 'READY', runnable: compat.status === 'READY',
+              format: detail.resource.workflow_format, errors: [], warnings: [],
+              missing_nodes: analysis.missing_nodes || [],
+              missing_models: (analysis.missing_models || []).map((m) => ({ file: m })),
+            }) + `
+              <div class="hint">${esc(compat.detail || '')}</div>
+              <div class="meta">${Object.entries(analysis.classes || {})
+                .map(([cls, n]) => `<span class="tag">${esc(cls)}${n > 1 ? ` ×${n}` : ''}</span>`).join('')}</div>
+              <div class="meta">${[...(analysis.checkpoints || []), ...(analysis.loras || [])]
+                .map((m) => `<span class="tag">${esc(m)}</span>`).join('')}</div>`;
+          } else if (act === 'import') {
+            const body = await api.discovery.importResource(id, {});
+            toast(`Imported as “${body.record.name}” — it is in your workflows`);
+            rerender();
+          } else if (act === 'adapt') {
+            slot.hidden = false;
+            const plan = await api.discovery.plan(id);
+            const ops = plan.plan.operations || [];
+            if (!ops.length) {
+              slot.innerHTML = `<div class="alert info">Nothing to change.
+                ${esc((plan.plan.notes || []).join(' ') || 'Every model this graph needs is installed.')}</div>`;
+              return;
+            }
+            slot.innerHTML = `
+              <div class="field"><label>Proposed changes (the original resource stays untouched)</label>
+                <div class="vlist">${ops.map((op) => `<div>${esc(op.target_node_id)}:
+                  <span class="mono">${esc(op.old_value)}</span> → <span class="mono">${esc(op.new_value)}</span>
+                  <div class="hint">${esc(op.reason)}</div></div>`).join('')}</div></div>
+              <div class="row"><button class="small primary" data-adapt="apply">Apply to a copy</button>
+                <button class="small ghost" data-adapt="close">Cancel</button></div>`;
+            slot.querySelector('[data-adapt="close"]').addEventListener('click', () => { slot.hidden = true; });
+            slot.querySelector('[data-adapt="apply"]').addEventListener('click', async (e2) => {
+              e2.target.disabled = true;
+              const done = await api.discovery.apply({ resource_id: id, save: true,
+                                                       name: `${plan.resource_title} (adapted)` });
+              toast(done.validation.valid ? 'Adapted and saved to your workflows'
+                : 'Adapted, but the result still has problems — see the validation', !done.validation.valid);
+              rerender();
+            });
+          }
+        } catch (err) {
+          if (act === 'analyze' && slot) {
+            slot.innerHTML = `<div class="alert danger">Could not check this workflow:
+              ${esc(err.message)}</div>`;
+          }
+          toast(err.message, true);
+        }
+      });
+    });
+  });
+}
+
+/* ------------------------------------------------------------ source management */
+
+let sourcesPoll = null;
+
+async function viewSources() {
+  clearTimeout(sourcesPoll);
+  const [status, list, sync, index] = await Promise.all([
+    api.discovery.status(),
+    api.discovery.sources(),
+    api.discovery.syncStatus().catch(() => ({})),
+    api.discovery.indexStatus().catch(() => ({})),
+  ]);
+  const isAdmin = auth.isAdmin();
+  const rows = list.sources || [];
+  const counts = status.sources || {};
+
+  view.innerHTML = `
+    <div class="page-head"><div><h1>Sources</h1>
+      <p>Every source here is described by what it can actually do. A source that has never been
+         contacted says so; nothing is labelled “connected” on faith.</p></div>
+      <div class="dim">${counts.enabled}/${counts.total} enabled · ${counts.never_synced} never synced</div></div>
+
+    <div class="grid cols-4">
+      <div class="stat"><div class="num">${counts.total || 0}</div><div class="dim">registered</div></div>
+      <div class="stat"><div class="num">${counts.ok || 0}</div><div class="dim">answered last check</div></div>
+      <div class="stat"><div class="num">${status.resources?.total || 0}</div><div class="dim">resources stored</div></div>
+      <div class="stat"><div class="num">${Math.round((index.coverage || 0) * 100)}%</div>
+        <div class="dim">indexed (${esc(index.model || 'none')})</div></div>
+    </div>
+
+    ${isAdmin ? `<div class="toolbar">
+      <button class="small primary" id="s-sync">Sync now</button>
+      <button class="small" id="s-index">Rebuild index</button>
+    </div>
+    <form class="row add-source" id="s-add">
+      <input type="url" id="s-url" placeholder="https://github.com/owner/repo" required>
+      <input type="text" id="s-name" placeholder="Name (optional)">
+      <button class="small" type="submit">Add source</button>
+    </form>` : `<div class="alert info">You can read this page. Syncing and editing sources is for administrators.</div>`}
+
+    <div class="hint" id="s-sync-line">Last sync run: ${esc(sync.last_run_at ? sync.last_run_at.slice(0, 19).replace('T', ' ') : 'never')}
+      ${sync.running ? `· running now${sync.current ? ` (${esc(sync.current)})` : ''}` : ''}</div>
+
+    <table class="sources-table">
+      <thead><tr><th>Source</th><th>Priority</th><th>Status</th><th>Formats</th>
+        <th>Last sync</th><th>Resources</th><th>Notes</th><th></th></tr></thead>
+      <tbody>
+        ${rows.map((s) => `<tr data-source="${esc(s.source_id)}">
+          <td><strong>${esc(s.name)}</strong><div class="dim mono">${esc(s.base_url)}</div></td>
+          <td>${esc(s.priority)}</td>
+          <td>${sourceBadge(s.status)}${s.rate_limit_status ? `<div class="hint">${esc(s.rate_limit_status)}</div>` : ''}</td>
+          <td class="mono">${esc((s.resource_types || []).join(', '))}${s.api_available ? '' : '<div class="dim">link discovery only</div>'}</td>
+          <td>${esc(s.last_sync_at ? s.last_sync_at.slice(0, 16).replace('T', ' ') : 'never')}</td>
+          <td>${s.resources_count || 0}</td>
+          <td class="dim">${esc(s.last_error || s.notes || '')}</td>
+          <td class="row" style="gap:6px">
+            <button class="small ghost" data-src-act="test">Test</button>
+            ${isAdmin ? `<label class="row dim" style="gap:4px">
+              <input type="checkbox" data-src-act="toggle" ${s.enabled ? 'checked' : ''}> on</label>` : ''}
+            ${s.in_catalog ? '' : `<button class="small danger" data-src-act="remove">Remove</button>`}
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+
+  // A sync runs in the background, so the panel watches it: whatever started the run — the button
+  // here or a request from elsewhere — the table must not keep saying "never synced".
+  const here = location.hash;
+  let sawRun = Boolean(sync.running);
+  const watch = async () => {
+    if (location.hash !== here) return;          // left the page: stop quietly
+    const now = await api.discovery.syncStatus().catch(() => null);
+    if (!now || location.hash !== here) return;
+    const line = document.getElementById('s-sync-line');
+    if (now.running) {
+      sawRun = true;
+      if (line) {
+        line.textContent = `Last sync run: ${now.started_at ? now.started_at.slice(0, 19).replace('T', ' ') : 'running'}` +
+          ` · running now${now.current ? ` (${now.current})` : ''}`;
+      }
+      sourcesPoll = setTimeout(watch, 3000);
+      return;
+    }
+    if (sawRun) {
+      const done = now.results || [];
+      const ok = done.filter((r) => r.status === 'ok' || r.status === 'partial').length;
+      const bad = done.filter((r) => r.status !== 'ok' && r.status !== 'partial');
+      toast(`Sync finished: ${ok} source(s) answered${bad.length ? `, ${bad.length} failed` : ''}`,
+            bad.length > 0);
+      route();
+      return;
+    }
+    sourcesPoll = setTimeout(watch, 5000);
+  };
+  sourcesPoll = setTimeout(watch, sync.running ? 100 : 2500);
+
+  view.querySelectorAll('[data-source]').forEach((row) => {
+    const id = row.dataset.source;
+    row.querySelectorAll('[data-src-act]').forEach((el) => {
+      el.addEventListener('change', async () => {
+        if (el.dataset.srcAct !== 'toggle') return;
+        try {
+          await api.discovery.toggleSource(id, el.checked);
+          toast(`${id} ${el.checked ? 'enabled' : 'disabled'}`);
+        } catch (err) { toast(err.message, true); el.checked = !el.checked; }
+      });
+      el.addEventListener('click', async (ev) => {
+        const act = el.dataset.srcAct;
+        if (act === 'toggle') return;
+        try {
+          if (act === 'test') {
+            el.disabled = true;
+            const report = await api.discovery.testSource(id);
+            toast(`${id}: ${report.status}${report.error ? ` — ${report.error}` : ''}`,
+                  report.status !== 'ok');
+            el.disabled = false;
+            route();
+          } else if (act === 'remove') {
+            if (!confirm(`Remove the source ${id}?`)) return;
+            await api.discovery.removeSource(id);
+            toast('Removed'); route();
+          }
+        } catch (err) { toast(err.message, true); }
+      });
+    });
+  });
+
+  if (!isAdmin) return;
+  document.getElementById('s-sync').addEventListener('click', async (ev) => {
+    ev.target.disabled = true;
+    try {
+      const started = await api.discovery.sync({});
+      toast(started.started?.length ? `Syncing ${started.started.length} source(s) in the background`
+        : 'Nothing to sync — every source is disabled or already running');
+    } catch (err) { toast(err.message, true); }
+    ev.target.disabled = false;
+    route();
+  });
+  document.getElementById('s-index').addEventListener('click', async (ev) => {
+    ev.target.disabled = true;
+    try {
+      const body = await api.discovery.index();
+      toast(`Index: ${body.resources} resources, ${body.embedded} embedded`);
+    } catch (err) { toast(err.message, true); }
+    ev.target.disabled = false;
+    route();
+  });
+  document.getElementById('s-add').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    try {
+      const body = await api.discovery.addSource({
+        base_url: document.getElementById('s-url').value,
+        name: document.getElementById('s-name').value || undefined,
+      });
+      toast(`Added ${body.source.name}`);
+      route();
+    } catch (err) { toast(err.message, true); }
+  });
+}
+
 const VIEWS = {
   dashboard: viewDashboard,
   library: viewLibrary,
+  discover: viewDiscover,
+  sources: viewSources,
+  create: viewCreate,
   jobs: viewJobs,
   gallery: viewGallery,
   models: viewModels,

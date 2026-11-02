@@ -164,4 +164,57 @@ export const api = {
   createUser: (body) => post('/api/users', body),
   updateUser: (id, body) => patch(`/api/users/${encodeURIComponent(id)}`, body),
   deleteUser: (id) => del(`/api/users/${encodeURIComponent(id)}`),
+
+  /*
+   * Workflow Studio. Two ways in — generating from a description and importing an exported file —
+   * and both end in the same place: a workflow stored under the caller's account, validated
+   * against the live engine, runnable through the normal job queue.
+   *
+   * None of these calls draw a graph. Editing happens in ComfyUI's own editor (openInEditor hands
+   * it the file and returns the URL); Studio only keeps, checks, exports and runs what comes back.
+   */
+  studio: {
+    templates: () => get('/api/wf/templates'),
+    generate: (body) => post('/api/wf/generate', body),
+    importJson: (body) => post('/api/wf/import', body),
+    validateJson: (body) => post('/api/wf/validate', body),
+    catalog: (q) => get(`/api/wf/catalog${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+    get: (id) => get(`/api/wf/${encodeURIComponent(id)}`),
+    update: (id, body) => patch(`/api/wf/${encodeURIComponent(id)}`, body),
+    duplicate: (id, body) => post(`/api/wf/${encodeURIComponent(id)}/duplicate`, body || {}),
+    remove: (id) => del(`/api/wf/${encodeURIComponent(id)}`),
+    exportUrl: (id, format) => `/api/wf/${encodeURIComponent(id)}/export?format=${format}`,
+    openInEditor: (id) => post(`/api/wf/${encodeURIComponent(id)}/open-in-editor`),
+    editorFiles: () => get('/api/wf/editor/files'),
+    importFromEditor: (body) => post('/api/wf/editor/import', body),
+  },
+
+  /*
+   * Smart workflow discovery. Searching, looking at one resource, analysing it, importing it into
+   * the caller's own space, comparing two, planning and applying a model adaptation, favourites.
+   * Source management and indexing are admin-only; a member gets 403 from the server.
+   */
+  discovery: {
+    status: () => get('/api/discovery/status'),
+    sources: () => get('/api/discovery/sources'),
+    toggleSource: (id, enabled) => patch(`/api/discovery/sources/${encodeURIComponent(id)}`, { enabled }),
+    addSource: (body) => post('/api/discovery/sources', body),
+    removeSource: (id) => del(`/api/discovery/sources/${encodeURIComponent(id)}`),
+    testSource: (id) => post(`/api/discovery/sources/${encodeURIComponent(id)}/test`, {}),
+    search: (body) => post('/api/discovery/search', body),
+    resource: (id) => get(`/api/discovery/resources/${encodeURIComponent(id)}`),
+    analyze: (id) => post(`/api/discovery/resources/${encodeURIComponent(id)}/analyze`, {}),
+    importResource: (id, body) => post(`/api/discovery/resources/${encodeURIComponent(id)}/import`, body || {}),
+    favorites: () => get('/api/discovery/favorites'),
+    addFavorite: (id) => post(`/api/discovery/favorites/${encodeURIComponent(id)}`, {}),
+    removeFavorite: (id) => del(`/api/discovery/favorites/${encodeURIComponent(id)}`),
+    compare: (ids) => post('/api/discovery/compare', { ids }),
+    plan: (resource_id) => post('/api/discovery/adapt/plan', { resource_id }),
+    apply: (body) => post('/api/discovery/adapt/apply', body),
+    adaptations: () => get('/api/discovery/adaptations'),
+    sync: (body) => post('/api/discovery/sync', body || {}),
+    syncStatus: () => get('/api/discovery/sync'),
+    index: () => post('/api/discovery/index', {}),
+    indexStatus: () => get('/api/discovery/index'),
+  },
 };
