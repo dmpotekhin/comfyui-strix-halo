@@ -11,7 +11,7 @@ import sqlite3
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
@@ -154,7 +154,8 @@ CREATE TABLE IF NOT EXISTS job_telemetry (
 #: 1 — accounts: ``user_id`` on jobs, outputs, events.
 #: 2 — workflow revisions: ``workflow_revision`` / ``graph_revision`` on jobs.
 #: 3 — execution telemetry: the ``job_telemetry`` ledger.
-CURRENT_SCHEMA_VERSION = 3
+#: 4 — discovery: external resources, provenance, source status, adaptations.
+CURRENT_SCHEMA_VERSION = 4
 
 MIGRATIONS_TABLE = """
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -178,6 +179,108 @@ def _add_column(table: str, column: str, ddl: str):
     return statement
 
 
+#: Discovery tables (schema 4). External resources are *not* the shipped catalogue: the system
+#: catalogue stays the 127 definitions in ``registry/workflows``, and these tables hold what was
+#: found elsewhere together with where it came from. Everything here is additive, so a studio that
+#: predates discovery keeps working on the same file after the migration.
+DISCOVERY_TABLES = (
+    """
+CREATE TABLE IF NOT EXISTS disc_sources (
+    source_id          TEXT PRIMARY KEY,
+    name               TEXT NOT NULL DEFAULT '',
+    priority           TEXT NOT NULL DEFAULT 'P2',
+    source_type        TEXT NOT NULL DEFAULT '',
+    base_url           TEXT NOT NULL DEFAULT '',
+    provider           TEXT NOT NULL DEFAULT '',
+    enabled            INTEGER NOT NULL DEFAULT 1,
+    api_available      INTEGER NOT NULL DEFAULT 0,
+    download_available INTEGER NOT NULL DEFAULT 0,
+    status             TEXT NOT NULL DEFAULT 'new',
+    last_error         TEXT,
+    last_sync_at       TEXT,
+    resources_count    INTEGER NOT NULL DEFAULT 0,
+    rate_limit_status  TEXT,
+    notes              TEXT NOT NULL DEFAULT ''
+)
+""",
+    """
+CREATE TABLE IF NOT EXISTS disc_resources (
+    id              TEXT PRIMARY KEY,
+    type            TEXT NOT NULL DEFAULT 'workflow',
+    title           TEXT NOT NULL DEFAULT '',
+    description     TEXT NOT NULL DEFAULT '',
+    tags            TEXT NOT NULL DEFAULT '[]',
+    source_id       TEXT NOT NULL DEFAULT '',
+    source_url      TEXT NOT NULL DEFAULT '',
+    download_url    TEXT,
+    preview_url     TEXT,
+    workflow_format TEXT NOT NULL DEFAULT 'unknown',
+    workflow_json   TEXT,
+    metadata        TEXT NOT NULL DEFAULT '{}',
+    stats           TEXT NOT NULL DEFAULT '{}',
+    compatibility   TEXT NOT NULL DEFAULT '{}',
+    content_hash    TEXT NOT NULL DEFAULT '',
+    graph_sig       TEXT NOT NULL DEFAULT '',
+    category        TEXT NOT NULL DEFAULT '',
+    license         TEXT NOT NULL DEFAULT 'unknown',
+    author          TEXT NOT NULL DEFAULT '',
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+)
+""",
+    "CREATE INDEX IF NOT EXISTS disc_res_type_idx ON disc_resources(type)",
+    "CREATE INDEX IF NOT EXISTS disc_res_source_idx ON disc_resources(source_id)",
+    "CREATE INDEX IF NOT EXISTS disc_res_hash_idx ON disc_resources(content_hash)",
+    "CREATE INDEX IF NOT EXISTS disc_res_sig_idx ON disc_resources(graph_sig)",
+    "CREATE INDEX IF NOT EXISTS disc_res_cat_idx ON disc_resources(category)",
+    """
+CREATE TABLE IF NOT EXISTS disc_links (
+    resource_id     TEXT NOT NULL,
+    source_id       TEXT NOT NULL,
+    source_url      TEXT NOT NULL,
+    author          TEXT NOT NULL DEFAULT '',
+    commit_sha      TEXT,
+    content_hash    TEXT NOT NULL DEFAULT '',
+    license         TEXT NOT NULL DEFAULT 'unknown',
+    source_metadata TEXT NOT NULL DEFAULT '{}',
+    discovered_at   TEXT NOT NULL,
+    source_updated_at TEXT,
+    PRIMARY KEY (resource_id, source_id, source_url)
+)
+""",
+    """
+CREATE TABLE IF NOT EXISTS disc_favorites (
+    user_id     TEXT NOT NULL,
+    resource_id TEXT NOT NULL,
+    created_at  TEXT NOT NULL,
+    PRIMARY KEY (user_id, resource_id)
+)
+""",
+    """
+CREATE TABLE IF NOT EXISTS disc_adaptations (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL,
+    resource_id TEXT NOT NULL,
+    workflow_id TEXT,
+    plan        TEXT NOT NULL DEFAULT '{}',
+    status      TEXT NOT NULL DEFAULT 'planned',
+    created_at  TEXT NOT NULL
+)
+""",
+    """
+CREATE TABLE IF NOT EXISTS disc_embeddings (
+    resource_id TEXT NOT NULL,
+    model       TEXT NOT NULL,
+    dim         INTEGER NOT NULL,
+    vector      BLOB NOT NULL,
+    text_hash   TEXT NOT NULL,
+    created_at  TEXT NOT NULL,
+    PRIMARY KEY (resource_id, model)
+)
+""",
+)
+
+
 #: Sequential, idempotent schema migrations. Never edit a shipped step: append a new one.
 #: Each entry is (version, description, steps); a step is SQL text or a callable taking the
 #: connection and returning SQL text (or None to skip).
@@ -192,11 +295,21 @@ MIGRATIONS: tuple[tuple[int, str, tuple], ...] = (
         _add_column("jobs", "graph_revision", "TEXT"),
     )),
     (3, "execution telemetry ledger", (TELEMETRY_TABLE,)),
+    (4, "workflow discovery: resources, provenance, sources, adaptations", DISCOVERY_TABLES),
 )
 
 
 def utcnow() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _bind(params: Any) -> Any:
+    """Keep named parameters as a mapping; everything else becomes a positional tuple."""
+    if isinstance(params, Mapping):
+        return dict(params)
+    if isinstance(params, (tuple, list)):
+        return tuple(params)
+    return (params,)
 
 
 class Database:
@@ -280,6 +393,33 @@ class Database:
         with self._lock:
             row = self._conn.execute("PRAGMA integrity_check").fetchone()
         return str(row[0]) if row else "unknown"
+
+    # -- generic access ---------------------------------------------------------------
+    # The discovery subsystem owns its own tables and its own SQL; it just needs the single
+    # connection this class already guards. Keeping the lock here is what stops the job worker and a
+    # sync thread from interleaving writes on one sqlite handle.
+    def fetch(self, sql: str, params: Iterable[Any] | Mapping[str, Any] = ()) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(sql, _bind(params)).fetchall()
+        return [dict(r) for r in rows]
+
+    def fetchone(self, sql: str, params: Iterable[Any] | Mapping[str, Any] = ()) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._conn.execute(sql, _bind(params)).fetchone()
+        return dict(row) if row else None
+
+    def run(self, sql: str, params: Iterable[Any] | Mapping[str, Any] = ()) -> int:
+        """Execute one statement and commit. Returns the affected row count."""
+        with self._lock:
+            cur = self._conn.execute(sql, _bind(params))
+            self._conn.commit()
+            return int(cur.rowcount if cur.rowcount is not None else 0)
+
+    def run_many(self, sql: str, rows: Iterable[Iterable[Any]]) -> int:
+        with self._lock:
+            cur = self._conn.executemany(sql, [tuple(r) for r in rows])
+            self._conn.commit()
+            return int(cur.rowcount if cur.rowcount is not None else 0)
 
     def close(self) -> None:
         with self._lock:

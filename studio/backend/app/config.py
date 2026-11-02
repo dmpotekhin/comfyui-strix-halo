@@ -20,6 +20,10 @@ class Settings:
     # --- ComfyUI -------------------------------------------------------------------
     comfy_url: str = "http://127.0.0.1:8188"
     comfy_timeout_s: float = 30.0
+    # Where the *browser* reaches ComfyUI's own editor. ComfyUI itself stays on loopback (8188) and
+    # is published to the LAN through Caddy on this port, so Studio links to that door instead of
+    # inventing one. It is only ever a link — Studio never proxies the editor.
+    editor_port: int = 8189
     # How long a submitted job may sit in ComfyUI's queue before we report it stalled.
     # How long to wait for a graph to finish before the studio stops tracking it. Wan 2.2
     # 5B needs ~25 min for 30 steps at 640x640 (measured), so 10 minutes was a lie.
@@ -98,6 +102,7 @@ class Settings:
 
 _ENV_MAP = {
     "STUDIO_COMFY_URL": ("comfy_url", str),
+    "STUDIO_EDITOR_PORT": ("editor_port", int),
     "STUDIO_HOST": ("host", str),
     "STUDIO_PORT": ("port", int),
     "STUDIO_LAN_SUBNET": ("lan_subnet", str),

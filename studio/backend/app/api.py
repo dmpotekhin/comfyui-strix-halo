@@ -104,6 +104,8 @@ class AppState:
         self.registry = Registry(workflows_dir=layout.workflows_dir,
                                  input_dir=layout.comfy_input)
         self.registry.reload()
+        # workflow id -> owner id, for the workflows people created in Workflow Studio.
+        self.user_workflow_owners: dict[str, str] = {}
         self.client = ComfyClient(settings.comfy_url, settings.comfy_timeout_s)
         self.jobs = JobManager(
             db=self.db,
@@ -159,6 +161,42 @@ class AppState:
                 inv.folders = self.client._folders_from_object_info()  # noqa: SLF001
             self.registry.set_environment(inv, node_info)
             self.last_env_refresh = now
+
+    # -- user workflows (Workflow Studio) ----------------------------------------------
+    def load_user_workflows(self) -> int:
+        """Make every workflow in the store runnable by the existing engine.
+
+        Done at startup and after every write, so a person's workflow is queued through exactly
+        the same path as the 127 registered ones. A record that cannot produce a valid definition
+        is skipped (and logged) rather than being allowed to break the whole catalog.
+        """
+        from . import workflow_gen
+        from .workflow_store import WorkflowStore
+
+        store = WorkflowStore(Path(self.layout.data) / "workflows")
+        loaded = 0
+        for record in store.each():
+            try:
+                entry = workflow_gen.as_workflow_def(
+                    record, node_info=self.registry.node_info, owner_name=record["owner_id"])
+                self.registry.register_extra(entry)
+                self.user_workflow_owners[str(record["id"])] = str(record["owner_id"])
+                loaded += 1
+            except Exception as e:                    # noqa: BLE001 — one bad file, not a crash
+                log.warning("cannot register user workflow %s: %s", record.get("id"), e)
+        return loaded
+
+    def register_user_workflow(self, record: dict[str, Any], owner_name: str) -> None:
+        from . import workflow_gen
+
+        entry = workflow_gen.as_workflow_def(
+            record, node_info=self.registry.node_info, owner_name=owner_name or record["owner_id"])
+        self.registry.register_extra(entry)
+        self.user_workflow_owners[str(record["id"])] = str(record["owner_id"])
+
+    def unregister_user_workflow(self, workflow_id: str) -> None:
+        self.registry.unregister_extra(workflow_id)
+        self.user_workflow_owners.pop(str(workflow_id), None)
 
 
 def create_app(layout: Layout, settings: Any) -> FastAPI:
@@ -478,6 +516,13 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         wf = state.registry.defs.get(workflow_id)
         if wf is None:
             raise HTTPException(404, f"unknown workflow: {workflow_id}")
+        if str(workflow_id).startswith("uwf_"):
+            # A workflow someone made in Studio belongs to them. The shared catalog's role policy
+            # says nothing about it, so ownership — not category — is the boundary here.
+            owner = state.user_workflow_owners.get(str(workflow_id))
+            if owner is None or (owner != user.id and not user.is_admin):
+                raise HTTPException(404, f"unknown workflow: {workflow_id}")
+            return wf
         if not state.rbac.may_run(user.role, wf.id, getattr(wf, "category", None)):
             raise HTTPException(403, f"workflow '{workflow_id}' is not available for your account")
         return wf
@@ -560,6 +605,13 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
     @app.on_event("startup")
     async def _startup() -> None:
         await state.refresh_environment(force=True)
+        # After the environment is known: a user workflow's parameters come from live schemas.
+        try:
+            loaded = state.load_user_workflows()
+            if loaded:
+                log.info("registered %d user workflow(s) for execution", loaded)
+        except Exception as e:                        # noqa: BLE001 — never block startup
+            log.warning("could not load user workflows: %s", e)
         await state.jobs.start()
         state.db.log_event("studio backend started")
 
@@ -658,6 +710,9 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
         rows = state.registry.list_summaries(
             category=category, status=status, search=q, runnable_only=runnable_only
         )
+        # Workflows people created live in the Workflow Studio catalog, under their own owner.
+        # Keeping them out of the shared library is what preserves the existing isolation.
+        rows = [r for r in rows if not str(r.id).startswith("uwf_")]
         allowed = state.rbac.visible_workflow_ids(user.role, state.registry.defs.values())
         if allowed is None:
             return rows
@@ -1296,6 +1351,16 @@ def create_app(layout: Layout, settings: Any) -> FastAPI:
     from .memory.router import register_memory_routes
 
     register_memory_routes(app, state)
+
+    # -- workflow studio (generate / import / store / export / editor round-trip) ------
+    from .workflow_api import register_workflow_routes
+
+    register_workflow_routes(app, state)
+
+    # -- workflow discovery (sources, search, analysis, adaptation, comparison) -------
+    from .discovery_api import register_discovery_routes
+
+    register_discovery_routes(app, state)
 
     # -- frontend ---------------------------------------------------------------------
     dist = layout.frontend_dist

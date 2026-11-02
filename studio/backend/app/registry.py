@@ -80,6 +80,10 @@ class Registry:
     inventory: Inventory = field(default_factory=Inventory)
     node_info: dict[str, Any] = field(default_factory=dict)
     _reports: dict[str, DependencyReport] = field(default_factory=dict)
+    # User-created workflows (Workflow Studio). They live in the store, not in the repository,
+    # but the execution engine resolves every workflow by id through `defs` — so they are added
+    # here and re-applied after a reload instead of teaching JobManager a second lookup path.
+    extras: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     # -- loading ----------------------------------------------------------------------
     def reload(self) -> None:
@@ -88,6 +92,7 @@ class Registry:
         self._reports.clear()
         if not self.workflows_dir.is_dir():
             self.issues.append(LoadIssue("<dir>", f"missing {self.workflows_dir}"))
+            self._reapply_extras()
             return
         for path in sorted(self.workflows_dir.glob("*.json")):
             try:
@@ -98,6 +103,29 @@ class Registry:
             entries = raw if isinstance(raw, list) else [raw]
             for entry in entries:
                 self._add(entry, path)
+        self._reapply_extras()
+
+    # -- user workflows ----------------------------------------------------------------
+    def _reapply_extras(self) -> None:
+        for entry in list(self.extras.values()):
+            self.defs.pop(str(entry.get("id")), None)
+            self._add(entry, Path("<user workflow>"))
+
+    def register_extra(self, entry: dict[str, Any]) -> None:
+        """Add or replace a user workflow in the live set (its id begins with ``uwf_``)."""
+        wid = str(entry.get("id") or "")
+        if not wid:
+            raise ValueError("a user workflow needs an id")
+        self.extras.pop(wid, None)
+        self.defs.pop(wid, None)
+        self._reports.pop(wid, None)
+        self.extras[wid] = entry
+        self._add(entry, Path("<user workflow>"))
+
+    def unregister_extra(self, workflow_id: str) -> None:
+        self.extras.pop(workflow_id, None)
+        self.defs.pop(workflow_id, None)
+        self._reports.pop(workflow_id, None)
 
     def _add(self, entry: dict[str, Any], path: Path) -> None:
         wid = str(entry.get("id") or path.stem)
@@ -518,20 +546,23 @@ class Registry:
 
     # -- stats ------------------------------------------------------------------------
     def stats(self) -> dict[str, Any]:
+        # Extras are workflows a person made; they live in the shared resolver only so the engine
+        # can run them. The catalog's totals describe the shipped library, so they stay out of it.
+        defs = {k: v for k, v in self.defs.items() if k not in self.extras}
         counts: dict[str, int] = {}
-        for wf in self.defs.values():
+        for wf in defs.values():
             st = self.summary(wf).status
             counts[st] = counts.get(st, 0) + 1
         by_cat: dict[str, int] = {}
-        for wf in self.defs.values():
+        for wf in defs.values():
             by_cat[wf.category] = by_cat.get(wf.category, 0) + 1
         return {
-            "total": len(self.defs),
+            "total": len(defs),
             "by_status": counts,
             "by_category": by_cat,
             "runnable": counts.get("available", 0) + counts.get("ready_to_test", 0),
-            "with_graph": sum(1 for w in self.defs.values() if w.graph is not None),
-            "tested_passed": sum(1 for w in self.defs.values() if w.test_status == "passed"),
+            "with_graph": sum(1 for w in defs.values() if w.graph is not None),
+            "tested_passed": sum(1 for w in defs.values() if w.test_status == "passed"),
         }
 
 
