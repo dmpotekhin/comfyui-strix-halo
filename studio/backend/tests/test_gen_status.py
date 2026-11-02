@@ -105,3 +105,45 @@ def test_render_reports_failure_verdict(gen_status, tmp_path):
     assert "**FAIL**" in text
     assert "2 failures" in text
     assert "50.0%" in text
+
+
+def test_check_ignores_the_wall_clock_but_catches_a_real_number(gen_status, tmp_path, monkeypatch, request):
+    """`--check` must fail on a wrong number and pass on a different run duration.
+
+    The comparison used to include the artefact timestamp and the run duration, so a green suite
+    made the check fail on the very next invocation — the noisiest possible signal, and the kind
+    of thing that gets switched off instead of fixed. The numbers people read must still be
+    compared, otherwise the check says nothing at all.
+    """
+    import re
+    import sys
+
+    def run(*flags: str) -> int:
+        # main() reads sys.argv, so the flags are injected rather than passed.
+        monkeypatch.setattr(sys, "argv", ["gen_status.py", *flags])
+        return gen_status.main()
+
+    # The generator prints the report path relative to the repository root, so the throwaway
+    # copy has to live inside it; otherwise pathlib refuses the relative_to() and the test fails
+    # for a reason that has nothing to do with the check.
+    out = gen_status.ROOT / "cache" / "audit" / "STATUS.check-test.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    request.addfinalizer(lambda: out.unlink(missing_ok=True))
+    monkeypatch.setattr(gen_status, "OUT", out)
+    assert run() == 0, "the generator must write the report"
+    text = out.read_text()
+    assert run("--check") == 0, "a freshly written report is by definition current"
+
+    # Only the wall clock moves: a longer run, a newer artefact, a new generation time.
+    noisy = re.sub(r"\d+(?:\.\d+)? s \(0:[\d:]+\)", "999.9 s (0:16:39)", text)
+    noisy = noisy.replace("(artefact written 20", "(artefact written 23")
+    noisy = re.sub(r"^Regenerated: .*$", "Regenerated: 2030-01-01 00:00 MSK by hand.",
+                   noisy, flags=re.M)
+    out.write_text(noisy)
+    assert run("--check") == 0, "a different duration is not drift"
+
+    # A number that people read must still be caught.
+    drift = re.sub(r"(\d+) tests,", lambda m: f"{int(m.group(1)) + 1} tests,", text, count=1)
+    assert drift != text, "the report must contain a test count to perturb"
+    out.write_text(drift)
+    assert run("--check") == 1, "a changed test count is drift"

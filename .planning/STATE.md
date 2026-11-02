@@ -1,6 +1,63 @@
 # STATE — «Три кошки» (локальный мультфильм)
 
-Обновлено: 2026-11-01 (Phase 1 шаг 2 закрыт: валидатор графа, revision hash, миграции БД)
+Обновлено: 2026-11-02 (Smart Workflow Discovery: PHASE 0–5 пройдены, набор не закоммичен)
+
+## Smart Workflow Discovery — агрегатор workflow и LoRA (2026-11-02, не закоммичен)
+
+Встроен в существующий Studio (без второго приложения, второй БД, второго JobManager и второго
+хранилища workflow). Документ для пользователя и разработчика — `docs/SMART_WORKFLOW_DISCOVERY.md`.
+
+* Сьют: **1025 тестов, 0 падений, 110 с**, покрытие **79.36 %** (baseline был 861 / 79.29 %);
+  `docs/STATUS.md` перегенерирован, `gen_status.py --check` — current.
+* PHASE 1 (persistence): `upsert_source` стал настоящим upsert с белым списком полей;
+  `SyncManager.status()` читает `MAX(last_sync_at)` из `disc_sources`, а не только память;
+  `#/sources` следит за прогоном и перерисовывается. Проверено живьём: sync → 37 ресурсов,
+  рестарт приложения (новый процесс, `SCRATCH_KEEP=1`) → те же 37, `status=ok`,
+  `resources_count=36` у `gh-cubiq-workflows`, `last_sync_at` на месте; повторный sync —
+  `saved 0, merged 38` без дубликатов.
+* PHASE 2 (UI/RBAC): `#/discover` (поиск RU/EN, фильтры, сортировка popular, пагинация,
+  Analyze/Compare/Import/Favorite/Adapt) и `#/sources` (24 источника, Test, Sync, Rebuild index,
+  тост с итогом). `#/sources` — admin-only в навигации и на backend; пользовательские workflow
+  (`uwf_…`) больше не попадают в выдачу discovery; чужой workflow недоступен (GET/PATCH/DELETE/
+  duplicate/open-in-editor — отказ).
+* Вёрстка проверена замерами на 1440/768/390: горизонтального скролла нет, поле поиска 38 px,
+  таблица источников прокручивается внутри себя, форма добавления источника на своей строке.
+* PHASE 3 (источники): живая проба 24 источников; в документе честные статусы —
+  WORKING 1 (`gh-cubiq-workflows`), PARTIAL 6 (в т.ч. `civitai`: 20 LoRA-метаданных, скачивания нет),
+  REGISTERED 8, UNAVAILABLE 9 (6 таймаутов, 2 × Reddit 403, 1 × 404).
+* PHASE 4 (§14): SSRF-гейт `net.check_public_url()`, `robots.txt` для HTML-страниц, лимиты
+  размера/архивов, без авто-исполнения импортированных workflow; 20 тестов в
+  `test_discovery_net_guards.py`.
+* Найдено и исправлено по ходу: `saved` в отчёте sync считал попытки, а не новые строки;
+  Civitai повторял первую страницу и «находил» одни и те же LoRA трижды.
+* Production не тронут: MainPID `2168361`, health 200, БД read-only `user_version 3`, `disc_*` нет.
+
+Открыто: коммит набора (36 путей), решение по embedding-модели (`semantic=false`), push.
+План на следующий день, с командами и критериями приёмки: `.planning/phases/smart-aggregator/NEXT.md`.
+
+## Workflow Studio — стабилизация (2026-11-02, не закоммичена)
+
+Ветка `main`, HEAD `8492418`, 22 коммита впереди `origin/main`, push не делался.
+Отчёт о проходе — `docs/WORKFLOW_STUDIO_STABILIZATION.md`; как продолжить —
+`docs/RESUME-2026-11-02.md`.
+
+* Импорт каталожных обёрток починен: `workflow_io.py` снимает `graph`/`prompt`/`workflow`
+  только при доказанной внутренней структуре (`unwrap_with_meta`), metadata обёртки доезжает
+  до записи (`source_meta`). Host-tool workflow — отдельный формат `host`, а не «битый JSON».
+* Каталог классифицирован целиком: **127 файлов, 45 api + 82 host, 0 нераспознанных**.
+  Round-trip четырёх названных workflow — 0 потерянных узлов, классов и входов.
+* Round-trip через редактор ComfyUI теперь **обновляет ту же запись** (`_editor_filename`),
+  прошлое состояние уходит в ревизию; раньше создавался дубликат.
+* Сьют: **861 тест, 0 падений, 95.4 с**, покрытие **79.3 %** (было 716 / 78.08 %).
+  `docs/STATUS.md` перегенерирован под эти цифры.
+* Браузерные сценарии A–E в scratch на `127.0.0.1:8127` пройдены (импорт → save → open in
+  ComfyUI → правка файла → возврат с ревизией; каталожные файлы; отказы на не-workflow JSON;
+  изоляция `wfuser`). Scratch остановлен штатно, порт закрыт.
+* Production не тронут: MainPID `2168361`, health 200, БД 150 jobs / 169 outputs / 3 users,
+  integrity ok.
+
+Открыто: коммит набора (5 слайсов), решение по ссылке на редактор (`STUDIO_EDITOR_URL`),
+push. Всё — по явному разрешению владельца.
 
 ## Где мы
 

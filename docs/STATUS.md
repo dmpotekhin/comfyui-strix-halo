@@ -1,54 +1,79 @@
 # STATUS — generated, do not hand-edit
 
-Regenerated: 2026-11-01 20:35 MSK by `python3 studio/tools/gen_status.py`.
+Regenerated: 2026-11-02 20:59 MSK by `python3 studio/tools/gen_status.py`.
 Every number below is computed from the working tree, from pytest artefacts, or from a
 live engine query. If a source is unavailable the row says so — nothing is filled in.
 
 ## Code
 
 | branch | `main` |
-| HEAD | `7d0a9fcf2b9b` — docs: record the production smoke test as blocked on login |
-| committed | 2026-11-01T19:13:21+03:00 |
+| HEAD | `546845b7216c` — feat(discovery): add discovery and studio screens |
+| committed | 2026-11-02T20:59:09+03:00 |
 | working tree | dirty |
 
 ## Tests
 
-Last recorded run: **PASS** — 714 tests, 0 failures, 0 errors, 0 skipped, 84.1 s (artefact written 2026-11-01 17:41 MSK).
+Last recorded run: **PASS** — 1036 tests, 0 failures, 0 errors, 0 skipped, 108.3 s (artefact written 2026-11-02 20:37 MSK).
 
-Test functions declared in the tree: 570 (static count; parametrisation multiplies the executed total).
+Test functions declared in the tree: 852 (static count; parametrisation multiplies the executed total).
 
-Coverage: **78.1%** — 4827/6184 statements, 1357 missed (artefact written 2026-11-01 17:41 MSK).
+Coverage: **79.4%** — 8088/10185 statements, 2097 missed (artefact written 2026-11-02 20:37 MSK).
 
 | module | coverage | covered | statements | missed |
 |---|---:|---:|---:|---:|
 | `main.py` | 0.0% | 0 | 46 | 46 |
 | `downloads.py` | 32.1% | 75 | 234 | 159 |
+| `media.py` | 51.2% | 82 | 160 | 78 |
 | `comfy.py` | 51.5% | 104 | 202 | 98 |
+| `web.py` | 53.7% | 122 | 227 | 105 |
+| `huggingface.py` | 54.8% | 57 | 104 | 47 |
 | `auth.py` | 62.1% | 159 | 256 | 97 |
 | `hosttools.py` | 62.6% | 575 | 918 | 343 |
-| `config.py` | 71.8% | 107 | 149 | 42 |
+| `analyze.py` | 67.3% | 101 | 150 | 49 |
+| `github.py` | 70.0% | 126 | 180 | 54 |
+| `config.py` | 72.0% | 108 | 150 | 42 |
 | `catalog.py` | 72.8% | 150 | 206 | 56 |
-| `jobs.py` | 78.4% | 616 | 786 | 170 |
+| `jobs.py` | 78.3% | 636 | 812 | 176 |
+| `embed.py` | 79.7% | 102 | 128 | 26 |
 | `router.py` | 79.7% | 63 | 79 | 16 |
-| `registry.py` | 81.9% | 335 | 409 | 74 |
-| `api.py` | 86.0% | 634 | 737 | 103 |
+| `workflow_store.py` | 82.4% | 140 | 170 | 30 |
+| `registry.py` | 82.6% | 355 | 430 | 75 |
+| `net.py` | 83.0% | 132 | 159 | 27 |
+| `workflow_io.py` | 83.1% | 399 | 480 | 81 |
+| `sync.py` | 83.3% | 80 | 96 | 16 |
+| `api.py` | 84.9% | 659 | 776 | 117 |
+| `store.py` | 86.3% | 183 | 212 | 29 |
 | `modelscan.py` | 86.4% | 38 | 44 | 6 |
-| `db.py` | 87.9% | 362 | 412 | 50 |
+| `discovery_api.py` | 87.3% | 324 | 371 | 47 |
+| `sources.py` | 87.5% | 21 | 24 | 3 |
+| `rank.py` | 87.8% | 86 | 98 | 12 |
+| `model.py` | 88.0% | 146 | 166 | 20 |
+| `db.py` | 88.3% | 386 | 437 | 51 |
+| `civitai.py` | 88.5% | 115 | 130 | 15 |
 | `paths.py` | 88.6% | 62 | 70 | 8 |
+| `base.py` | 90.0% | 45 | 50 | 5 |
+| `workflow_api.py` | 90.5% | 249 | 275 | 26 |
+| `adapt.py` | 91.0% | 121 | 133 | 12 |
 | `graphcheck.py` | 91.4% | 192 | 210 | 18 |
 | `media.py` | 91.7% | 22 | 24 | 2 |
 | `probe.py` | 91.7% | 22 | 24 | 2 |
 | `telemetry.py` | 92.3% | 299 | 324 | 25 |
+| `workflow_gen.py` | 92.5% | 197 | 213 | 16 |
+| `search.py` | 93.5% | 187 | 200 | 13 |
 | `rbac.py` | 93.9% | 123 | 131 | 8 |
+| `classify.py` | 94.1% | 95 | 101 | 6 |
 | `inventory.py` | 94.1% | 177 | 188 | 11 |
 | `schemas.py` | 95.1% | 175 | 184 | 9 |
 | `taxonomy.py` | 95.7% | 45 | 47 | 2 |
 | `revisions.py` | 96.6% | 57 | 59 | 2 |
 | `estimate.py` | 97.1% | 100 | 103 | 3 |
 | `history.py` | 97.2% | 105 | 108 | 3 |
+| `index.py` | 97.4% | 37 | 38 | 1 |
 | `analyze.py` | 97.5% | 117 | 120 | 3 |
 | `benchmark.py` | 99.1% | 109 | 110 | 1 |
 | `__init__.py` | 100.0% | 2 | 2 | 0 |
+| `__init__.py` | 100.0% | 1 | 1 | 0 |
+| `__init__.py` | 100.0% | 23 | 23 | 0 |
 | `__init__.py` | 100.0% | 2 | 2 | 0 |
 
 ## Capability surface
@@ -71,11 +96,11 @@ Model files on disk: **12** (44.92 GB); catalogued: **19** (see `docs/model_depe
 
 ## Live host
 
-ComfyUI 0.15.0 · torch 2.9.1+rocm7.2.0.git7e1940d4 · cuda:0 AMD Radeon Graphics : native (cuda) · VRAM 88.7/96.0 GB free
+ComfyUI 0.15.0 · torch 2.9.1+rocm7.2.0.git7e1940d4 · cuda:0 AMD Radeon Graphics : native (cuda) · VRAM 88.8/96.0 GB free
 
-Unified memory (sysfs/proc, independent of the engine): vram used gb 9.11, gtt used gb 0.13, mem total gb 30.5, mem available gb 19.3
+Unified memory (sysfs/proc, independent of the engine): vram used gb 8.7, gtt used gb 0.11, mem total gb 30.5, mem available gb 22.0
 
-Disk free on the project volume: 709.4 GB of 936.8 GB.
+Disk free on the project volume: 709.1 GB of 936.8 GB.
 
 ## Cancelling a running host job
 

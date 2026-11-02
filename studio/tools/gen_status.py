@@ -466,14 +466,25 @@ def main() -> int:
             """Only the deterministic part: live memory/engine numbers change every run by design,
             so comparing them would make this check useless (and tempting to switch off)."""
             head = s.split("## Live host")[0]
-            return "\n".join(ln for ln in head.splitlines()
-                             if not ln.startswith("Regenerated:")
-                             and not ln.startswith("| working tree |")
-                             # HEAD moves with every commit, so a report is by definition
-                             # one line behind the tree it describes; comparing it made
-                             # --check fail immediately after each commit.
-                             and not ln.startswith("| HEAD |")
-                             and not ln.startswith("| committed |"))
+            kept = [ln for ln in head.splitlines()
+                    if not ln.startswith("Regenerated:")
+                    and not ln.startswith("| working tree |")
+                    # HEAD moves with every commit, so a report is by definition
+                    # one line behind the tree it describes; comparing it made
+                    # --check fail immediately after each commit.
+                    and not ln.startswith("| HEAD |")
+                    and not ln.startswith("| committed |")]
+            # The test and coverage rows carry when the artefact was written and how long the run
+            # took. Those two values change on every run even when nothing else moves, and
+            # comparing them made --check fail right after a green suite — the noisiest possible
+            # signal. The numbers that matter (count, failures, percentage, statements) stay in
+            # the comparison; only the wall clock is dropped.
+            # Two shapes appear here: "..., 108.3 s (artefact written 2026-11-02 20:33 MSK)".
+            # Both the wall-clock duration and that stamp move on every run of the same suite,
+            # so they are stripped before comparing; every count and percentage stays.
+            noise = re.compile(r",?\s*\d+(?:\.\d+)? s\b|\s*\(artefact written [^)]*\)")
+            kept = [noise.sub("", ln) for ln in kept]
+            return "\n".join(kept)
 
         if stable(current) != stable(text):
             print("docs/STATUS.md is stale — run studio/tools/gen_status.py", file=sys.stderr)
