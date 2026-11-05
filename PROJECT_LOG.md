@@ -598,3 +598,9 @@ MiniMax H3 и без ffmpeg.
 **Git.** Локальный репозиторий существовал (63 коммита, `origin` = dmpotekhin/comfyui-strix-halo,
 main опережал origin на 25 коммитов). `gh` CLI не установлен. **Удалённый репозиторий публичный**
 (api.github.com отдаёт 200 без авторизации) — push не выполнялся, требуется решение владельца.
+
+**Публикация (по явному разрешению владельца, публичный репозиторий):**
+`ccce36e..80026fb  main -> main`, без force, история сохранена. Проверено через публичный API:
+на `main` стоит `80026fb`, файлы `docker/ffmpeg-layer/Dockerfile`,
+`custom_nodes/h3_gpu_clip_loader/__init__.py`, `workflows/h3-studio/H3_STUDIO_1_FAST_GPULoader.json`,
+`scripts/h3_gpu_stage_check.sh` доступны; `models/`, `output/`, веса — 404 (не публиковались).

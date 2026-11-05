@@ -21,7 +21,10 @@ MemAvailable минимум 8,1 ГиБ; Stage 4 — все 6 workflow валид
 
 Открыто: в образе нет `ffmpeg` — бинарник сейчас скопирован в контейнер вручную
 (`/usr/local/bin/ffmpeg`), при пересоздании контейнера потеряется; нужен постоянный способ.
-Коммит и возврат флагов `compose.yaml` (`bak-preflags`) — по решению владельца.
+ffmpeg закреплён в образе `comfyui-gfx1151:h3-v0.44.1` (слой `docker/ffmpeg-layer`) и проверяется
+Stage 0 в `scripts/h3_gpu_stage_check.sh`; повторный FAST на этом образе — success, 348 с,
+`output/glide_00002.mkv`. Закоммичено и опубликовано: `80026fb` (публичный репозиторий,
+разрешение владельца). Открыто: QUALITY и 2K — по отдельному решению.
 Полный контекст: `RESUME-2026-11-05.md`, `.planning/phases/h3-gpu-clip-loader/PHASE.md`,
 подробности прогона — `PROJECT_LOG.md` (запись 13:17–13:25).
 
