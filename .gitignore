@@ -26,7 +26,18 @@ diagnostics/
 # ── Vendored third-party trees ───────────────────────────────────────────────────────────────────
 # Each has its own upstream and its own .git: piper is a downloaded release bundle (~30 MB), the
 # custom nodes are `git clone`s. Neither is ours to version and both are restored by docs/setup steps.
-custom_nodes/
+# Local build context and code index — generated, reproducible from the tracked recipe
+.build-ctx/
+.codegraph/
+
+# Local safety copies of compose.yaml taken before flag experiments
+compose.yaml.bak-*
+
+custom_nodes/*
+# Exception: H3 CLIP Loader (GPU) is our own code, not a `git clone`. Without an
+# exception inside the ignored tree git refuses to add it at all.
+!custom_nodes/h3_gpu_clip_loader/
+!custom_nodes/h3_gpu_clip_loader/**
 studio/tools/piper/piper/
 
 # ── Environments and vendored builds ─────────────────────────────────────────────────────────────

@@ -11,7 +11,11 @@
 
 services:
   comfyui:
-    image: ${COMFY_IMAGE:-ignatberesnev/comfyui-gfx1151:v0.2}
+    # Образ: H3-слой поверх gfx1151 v0.2 (ComfyUI v0.44.0) + ffmpeg.
+    # Ставить образ по умолчанию обязательно: с базовым v0.2 контейнер пересоздался бы
+    # без узлов MiniMax H3 и без ffmpeg, то есть сломал бы рабочую FAST-конфигурацию.
+    # Пересборка: docker build -f docker/ffmpeg-layer/Dockerfile -t comfyui-gfx1151:h3-v0.44.1 docker/ffmpeg-layer
+    image: ${COMFY_IMAGE:-comfyui-gfx1151:h3-v0.44.1}
     container_name: ${COMFY_NAME:-comfyui-strix-halo}
 
     # только localhost: снаружи ноутбука сервис недоступен
@@ -33,6 +37,11 @@ services:
       - ./workflows:/opt/ComfyUI/user/default/workflows
       # кастомные узлы (IP-Adapter) — иначе теряются при пересоздании контейнера
       - ./custom_nodes:/opt/ComfyUI/custom_nodes
+
+    command: >
+      /bin/sh -c "/opt/comfyui-gfx1151-utils/check-comfyui.sh &&
+      python3 /opt/ComfyUI/main.py --listen 0.0.0.0 --use-flash-attention
+      --gpu-only --cache-none --async-offload 2"
 
     # GPU: KFD (compute) + DRM (render). GPU-runtime в Docker не нужен.
     devices:

@@ -1,6 +1,29 @@
 # STATE — «Три кошки» (локальный мультфильм)
 
-Обновлено: 2026-11-02 (Smart Workflow Discovery: PHASE 0–5 пройдены, набор не закоммичен)
+Обновлено: 2026-11-05 (H3 CLIP Loader (GPU): Stage 1–4 пройдены, FAST сгенерирована)
+
+## H3 CLIP Loader (GPU) — 2026-11-05, STAGE 1–4 PASS (не закоммичено)
+
+Цель: убрать OOM при загрузке Qwen3-VL 32B FP8 (24,7 ГиБ) на Strix Halo (RAM 30 ГиБ,
+VRAM 96 ГиБ). Решение — вариант A: своя нода, ядро ComfyUI не трогаем.
+
+Сделано: `custom_nodes/h3_gpu_clip_loader/` (нода `H3ClipLoaderGPU`), чтение safetensors
+порциями прямо в VRAM; пик анонимной RAM **1,86 ГиБ** вместо 24,73 (OOM-kill), чтение 10,4 с
+вместо ~62, VRAM 26,80 ГиБ, fp8 сохранён, веса **1369/1369** совпали с файлом.
+Копия workflow `workflows/h3-studio/H3_STUDIO_1_FAST_GPULoader.json` (оригинал цел),
+доки обновлены, скрипт этапов `scripts/h3_gpu_stage_check.sh`.
+
+Проверено живьём 2026-11-05 13:17–13:25 MSK (контейнер уже был свежим, повторный restart
+не потребовался): нода в `/object_info`; энкодер 1836 тензоров за 20,9 с, RSS 3,20 ГиБ,
+VRAM 27,02 ГиБ; FAST-генерация `status=success` за 337,84 с; файл **`output/glide_00001.mkv`**
+(768×448, 124 кадра, 24 fps, 5,18 с, H.264 + аудио, декодируется целиком); VRAM пик 44,6 ГиБ,
+MemAvailable минимум 8,1 ГиБ; Stage 4 — все 6 workflow валидны, штатный `CLIPLoader` цел.
+
+Открыто: в образе нет `ffmpeg` — бинарник сейчас скопирован в контейнер вручную
+(`/usr/local/bin/ffmpeg`), при пересоздании контейнера потеряется; нужен постоянный способ.
+Коммит и возврат флагов `compose.yaml` (`bak-preflags`) — по решению владельца.
+Полный контекст: `RESUME-2026-11-05.md`, `.planning/phases/h3-gpu-clip-loader/PHASE.md`,
+подробности прогона — `PROJECT_LOG.md` (запись 13:17–13:25).
 
 ## Smart Workflow Discovery — агрегатор workflow и LoRA (2026-11-02, не закоммичен)
 

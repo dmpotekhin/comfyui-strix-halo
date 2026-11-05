@@ -1,0 +1,37 @@
+# H3 Studio: ComfyUI 0.15.0 -> v0.44.0 поверх существующего образа (без второй установки).
+# Причина: comfy_extras/nodes_minimax_h3.py (узлы MiniMax H3) появились в ядре
+# ComfyUI намного позже v0.15.0; CGlide требует ComfyUI >= 0.31.
+#
+# ВАЖНО: в образе gfx1151 код лежит в /opt/ComfyUI-pre-cloned, а /opt/ComfyUI
+# заполняется при старте контейнера скриптом check-comfyui.sh. Поэтому обновляем
+# pre-cloned и сразу копируем его в /opt/ComfyUI (тогда при старте копирование
+# не выполняется заново).
+#
+# torch / torchvision / torchaudio НЕ трогаем: это ROCm 7.2 сборки из v0.2,
+# а requirements.txt ComfyUI их не пиннит -> pip их не переустановит.
+FROM ignatberesnev/comfyui-gfx1151:v0.2
+
+USER root
+
+RUN cd /opt/ComfyUI-pre-cloned \
+ && git fetch --tags --force origin master \
+ && git checkout v0.44.0 \
+ && git rev-parse --short HEAD
+
+RUN cp -r /opt/ComfyUI-pre-cloned/. /opt/ComfyUI/ \
+ && cd /opt/ComfyUI \
+ && git rev-parse --short HEAD > .build_commit \
+ && echo "comfyui checkout: $(cat .build_commit)"
+
+RUN cd /opt/ComfyUI && python -m pip install --no-cache-dir -r requirements.txt
+
+# Проверка, что ROCm-сборка torch уцелела после установки зависимостей.
+RUN python -c "import torch;print('torch',torch.__version__);assert 'rocm' in torch.__version__.lower(),'ROCm torch lost!'" \
+ && python -c "import torchvision;print('torchvision',torchvision.__version__)"
+
+# Зависимости кастомных нод (KJNodes требует их на уровне импорта пакета;
+# каталог custom_nodes смонтирован с хоста, поэтому pip-пакеты ставим в образ).
+RUN python -m pip install --no-cache-dir color-matcher mss opencv-python-headless
+
+RUN cd /opt/ComfyUI && python -m compileall -q comfy comfy_extras nodes.py main.py >/dev/null && echo "syntax ok"
+
